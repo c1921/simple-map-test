@@ -49,6 +49,8 @@ python -m simple_map.cli --config map_config.json
 
 - `--sea-level` - 海平面高度(默认 0.45)
 - `--snow-level` - 雪线高度(默认 0.9)
+- `--edge-falloff-margin` - 从边缘往内多少比例开始降低噪声(0~0.49，默认 0.08)，可保证四周海面
+- `--edge-falloff-power` - 边缘衰减速度(>0，默认 1.8)，值越大海岸线越窄
 
 ### 渲染参数
 

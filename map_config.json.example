@@ -9,6 +9,8 @@
   "base_scale": 160.0,
   "sea_level": 0.45,
   "snow_level": 0.99,
+  "edge_falloff_margin": 0,
+  "edge_falloff_power": 0.2,
   "out": "renders/map.png",
   "heightmap": "renders/height.png",
 

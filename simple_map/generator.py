@@ -23,6 +23,8 @@ class MapGeneratorConfig:
     base_scale: float = 160.0
     sea_level: float = 0.45
     snow_level: float = 0.9
+    edge_falloff_margin: float = 0.08
+    edge_falloff_power: float = 1.8
 
     # 侵蚀模拟参数
     enable_erosion: bool = False
@@ -70,6 +72,15 @@ class MapGenerator:
         mask = noise.continent_mask(cfg.width, cfg.height)
         heightmap = fbm * 0.65 + mask * 0.35
         heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
+        edge_mask: Optional[np.ndarray] = None
+        if cfg.edge_falloff_power > 0:
+            edge_mask = noise.edge_falloff_mask(
+                cfg.width,
+                cfg.height,
+                margin=cfg.edge_falloff_margin,
+                exponent=cfg.edge_falloff_power,
+            )
+            heightmap *= edge_mask
 
         # 应用侵蚀模拟(如果启用)
         if cfg.enable_erosion:
@@ -120,6 +131,8 @@ class MapGenerator:
 
             # 重新归一化
             heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
+            if edge_mask is not None:
+                heightmap *= edge_mask
 
         return heightmap.astype(np.float32)
 

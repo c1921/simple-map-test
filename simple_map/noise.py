@@ -97,3 +97,34 @@ def continent_mask(width: int, height: int, falloff: float = 2.5) -> np.ndarray:
     distance = np.sqrt(x * x + y * y)
     mask = 1.0 - np.power(distance, falloff)
     return np.clip(mask, 0.0, 1.0)
+
+
+def edge_falloff_mask(
+    width: int,
+    height: int,
+    *,
+    margin: float = 0.08,
+    exponent: float = 1.5,
+) -> np.ndarray:
+    """生成一个靠近边缘快速衰减的遮罩，用于压低海岸线附近的噪声。
+
+    margin 控制从边缘开始衰减的宽度（占总尺寸的比例），exponent 控制衰减的速度。
+    """
+
+    if exponent <= 0:
+        return np.ones((height, width), dtype=np.float32)
+
+    margin = float(np.clip(margin, 0.0, 0.49))
+    y = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
+    x = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
+    distance_to_edge = np.minimum(
+        np.minimum(x, 1.0 - x),
+        np.minimum(y, 1.0 - y),
+    )
+    max_distance = 0.5 - margin
+    if max_distance <= 1e-6:
+        normalized = np.zeros_like(distance_to_edge)
+    else:
+        normalized = np.clip((distance_to_edge - margin) / max_distance, 0.0, 1.0)
+    normalized = normalized.astype(np.float32)
+    return normalized**exponent

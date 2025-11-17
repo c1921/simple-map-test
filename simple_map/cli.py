@@ -26,6 +26,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-scale", type=float, default=None)
     parser.add_argument("--sea-level", type=float, default=None)
     parser.add_argument("--snow-level", type=float, default=None)
+    parser.add_argument(
+        "--edge-falloff-margin",
+        type=float,
+        default=None,
+        help="距边缘多少比例开始强制降低高度(0-0.49)",
+    )
+    parser.add_argument(
+        "--edge-falloff-power",
+        type=float,
+        default=None,
+        help="边缘高度衰减速度(>0)",
+    )
 
     # 侵蚀模拟参数
     parser.add_argument("--enable-erosion", action="store_true", help="启用侵蚀模拟")
@@ -119,6 +131,8 @@ def run() -> None:
         base_scale=float(pick("base_scale", args, config_data, 160.0)),
         sea_level=float(pick("sea_level", args, config_data, 0.45)),
         snow_level=float(pick("snow_level", args, config_data, 0.9)),
+        edge_falloff_margin=float(pick("edge_falloff_margin", args, config_data, 0.08)),
+        edge_falloff_power=float(pick("edge_falloff_power", args, config_data, 1.8)),
         # 侵蚀模拟参数
         enable_erosion=bool(pick("enable_erosion", args, config_data, False)),
         erosion_iterations=int(pick("erosion_iterations", args, config_data, 100)),
