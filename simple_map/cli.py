@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Dict
 
@@ -33,7 +34,16 @@ def load_config(path: Path | None, *, require_exists: bool) -> Dict[str, Any]:
     if not target.exists():
         if require_exists:
             raise FileNotFoundError(f"指定的配置文件不存在：{target}")
-        return {}
+        # 如果是默认配置文件且不存在，尝试从示例文件复制
+        if path is None:
+            example_path = Path("map_config.json.example")
+            if example_path.exists():
+                shutil.copy(example_path, target)
+                print(f"已从 {example_path} 创建配置文件：{target}")
+            else:
+                return {}
+        else:
+            return {}
     with target.open("r", encoding="utf-8") as fp:
         return json.load(fp)
 
