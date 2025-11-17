@@ -64,6 +64,17 @@ def load_config(path: Path | None, *, require_exists: bool) -> Dict[str, Any]:
 
 def pick(setting: str, args: argparse.Namespace, config: Dict[str, Any], default: Any) -> Any:
     value = getattr(args, setting)
+    # 对于 action="store_true" 的参数，只有显式提供时才使用命令行值
+    # 否则应该从配置文件读取
+    if setting == "enable_erosion":
+        # 检查是否通过命令行显式设置了 --enable-erosion
+        if value is True:  # 只有真正设置了才使用
+            return value
+        # 否则从配置文件读取
+        if setting in config:
+            return config[setting]
+        return default
+
     if value is not None:
         return value
     if setting in config:
