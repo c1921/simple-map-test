@@ -8,7 +8,7 @@
   "lacunarity": 2.0,
   "base_scale": 160.0,
   "sea_level": 0.45,
-  "snow_level": 0.9,
+  "snow_level": 0.99,
   "out": "renders/map.png",
   "heightmap": "renders/height.png",
 
@@ -23,10 +23,13 @@
   "erosion_dissolving_rate": 0.25,
   "erosion_deposition_rate": 0.001,
   "erosion_cell_width": 1.0,
-
-  "render_mode": "classic",
+  "render_mode": "realistic",
   "gradient_preset": "ocean_land",
-  "light_direction": [-0.2, -0.5, 0.7],
-  "ambient_light": 0.35,
-  "normal_strength": 6.0
+  "light_direction": [
+    -0.35,
+    -0.65,
+    0.7
+  ],
+  "ambient_light": 0.2,
+  "normal_strength": 18.0
 }

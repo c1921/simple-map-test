@@ -39,18 +39,24 @@ def _reference_gradient(_sea_level: float, _snow_level: float) -> Sequence[Gradi
 def _ocean_land_gradient(sea_level: float, snow_level: float) -> Sequence[GradientStop]:
     sea = float(np.clip(sea_level, 0.05, 0.95))
     snow = float(np.clip(snow_level, 0.5, 1.0))
-    shore = min(sea + 0.02, 0.98)
-    plains = min(sea + 0.18, 0.99)
-    highlands = min(snow - 0.08, 0.995)
+    land_span = max(snow - sea, 1e-4)
+
+    def land_pos(relative: float) -> float:
+        return min(sea + relative * land_span, 0.999)
+
     return (
         GradientStop(0.00, (8 / 255, 20 / 255, 65 / 255)),
         GradientStop(max(sea * 0.35, 0.02), (17 / 255, 46 / 255, 110 / 255)),
-        GradientStop(max(sea * 0.8, 0.04), (32 / 255, 86 / 255, 143 / 255)),
-        GradientStop(sea, (223 / 255, 211 / 255, 180 / 255)),
-        GradientStop(shore, (209 / 255, 196 / 255, 158 / 255)),
-        GradientStop(plains, (97 / 255, 145 / 255, 82 / 255)),
-        GradientStop(highlands, (123 / 255, 113 / 255, 73 / 255)),
-        GradientStop(snow, (200 / 255, 200 / 255, 200 / 255)),
+        GradientStop(max(sea * 0.8, 0.04), (34 / 255, 78 / 255, 138 / 255)),
+        GradientStop(sea, (52 / 255, 112 / 255, 64 / 255)),
+        GradientStop(land_pos(0.08), (66 / 255, 131 / 255, 62 / 255)),
+        GradientStop(land_pos(0.2), (122 / 255, 154 / 255, 60 / 255)),
+        GradientStop(land_pos(0.4), (213 / 255, 191 / 255, 101 / 255)),
+        GradientStop(land_pos(0.55), (210 / 255, 143 / 255, 65 / 255)),
+        GradientStop(land_pos(0.85), (147 / 255, 72 / 255, 33 / 255)),
+        GradientStop(land_pos(0.95), (128 / 255, 128 / 255, 128 / 255)),
+        GradientStop(land_pos(0.98), (210 / 255, 210 / 255, 210 / 255)),
+        GradientStop(snow, (0.94, 0.94, 0.94)),
         GradientStop(1.0, (1.0, 1.0, 1.0)),
     )
 
