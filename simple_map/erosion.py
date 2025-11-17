@@ -4,6 +4,7 @@
 """
 
 from dataclasses import dataclass
+from typing import Optional
 import numpy as np
 from . import erosion_utils as utils
 
@@ -31,6 +32,9 @@ class ErosionConfig:
 
     # 网格参数
     cell_width: float = 1.0  # 网格单元宽度(用于物理计算)
+
+    # 海拔参数
+    sea_level: Optional[float] = None  # 低于此高度视为海洋(终止侵蚀)
 
 
 class ErosionSimulator:
@@ -69,6 +73,11 @@ class ErosionSimulator:
         sediment = np.zeros_like(terrain)  # 水中悬浮的沉积物
         water = np.zeros_like(terrain)  # 水量
         velocity = np.zeros_like(terrain)  # 水流速度
+
+        ocean_mask = None
+        if self.config.sea_level is not None:
+            ocean_mask = terrain <= self.config.sea_level
+            terrain = self._clamp_ocean_surface(terrain, ocean_mask)
 
         # 主模拟循环
         for i in range(self.config.iterations):
@@ -122,9 +131,11 @@ class ErosionSimulator:
             # 8. 沉积物和水沿梯度移动
             sediment = utils.displace(sediment, gradient)
             water = utils.displace(water, gradient)
+            ocean_mask = self._drain_to_ocean(terrain, water, sediment, ocean_mask)
 
             # 9. 坡度坍塌(平滑陡坡)
             terrain = self._apply_slippage(terrain)
+            terrain = self._clamp_ocean_surface(terrain, ocean_mask)
 
             # 10. 更新速度
             velocity = self.config.gravity * height_delta / self.config.cell_width
@@ -136,10 +147,36 @@ class ErosionSimulator:
             if callback is not None:
                 callback(i + 1, terrain.copy())
 
+        terrain = self._clamp_ocean_surface(terrain, ocean_mask)
+
         if verbose:
             print(f'侵蚀模拟完成: {self.config.iterations} 次迭代')
 
         return terrain.astype(np.float32)
+
+    def _drain_to_ocean(self, terrain, water, sediment, ocean_mask):
+        sea_level = self.config.sea_level
+        if sea_level is None:
+            return ocean_mask
+
+        current_ocean = terrain <= sea_level
+        if np.any(current_ocean):
+            water[current_ocean] = 0.0
+            sediment[current_ocean] = 0.0
+
+        if ocean_mask is None:
+            ocean_mask = current_ocean
+        else:
+            ocean_mask |= current_ocean
+        return ocean_mask
+
+    def _clamp_ocean_surface(self, terrain, ocean_mask):
+        sea_level = self.config.sea_level
+        if sea_level is None or ocean_mask is None:
+            return terrain
+        if np.any(ocean_mask):
+            terrain[ocean_mask] = np.minimum(terrain[ocean_mask], sea_level)
+        return terrain
 
     def _apply_slippage(self, terrain: np.ndarray) -> np.ndarray:
         """

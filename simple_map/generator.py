@@ -86,6 +86,7 @@ class MapGenerator:
                 dissolving_rate=cfg.erosion_dissolving_rate,
                 deposition_rate=cfg.erosion_deposition_rate,
                 cell_width=cfg.erosion_cell_width,
+                sea_level=cfg.sea_level,
             )
 
             simulator = ErosionSimulator(erosion_config)
