@@ -175,6 +175,7 @@ class MapGenerator:
                 heightmap,
                 output,
                 gradient=gradient,
+                sea_level=self.config.sea_level,
                 light_direction=self.config.light_direction,
                 ambient_light=self.config.ambient_light,
                 normal_strength=self.config.normal_strength,
