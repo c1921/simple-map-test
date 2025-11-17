@@ -14,7 +14,11 @@ pip install -r requirements.txt
 
 ```bash
 python map_generator.py --width 1024 --height 768 --seed 123 --out renders/map.png --heightmap renders/height.png
+# 或者
+python -m simple_map.cli --config map_config.json
 ```
+
+`map_config.json` 已预先提供，可直接修改参数（宽高、噪声设置、输出路径等）；命令行参数与配置文件同名时会覆盖配置值。若要固定种子，可在配置中或命令行启用 `use_seed` 并设置 `seed`；默认关闭则每次运行随机生成。
 
 可用参数：
 

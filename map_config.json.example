@@ -1,0 +1,14 @@
+{
+  "width": 1024,
+  "height": 768,
+  "use_seed": false,
+  "seed": 123,
+  "octaves": 5,
+  "persistence": 0.5,
+  "lacunarity": 2.0,
+  "base_scale": 160.0,
+  "sea_level": 0.45,
+  "snow_level": 0.9,
+  "out": "renders/map.png",
+  "heightmap": "renders/height.png"
+}
