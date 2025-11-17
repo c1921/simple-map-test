@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m simple_map.cli:*)",
+      "Bash(python test_erosion.py:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -24,6 +24,19 @@ class MapGeneratorConfig:
     sea_level: float = 0.45
     snow_level: float = 0.9
 
+    # 侵蚀模拟参数
+    enable_erosion: bool = False
+    erosion_iterations: int = 100
+    erosion_rain_rate: float = 0.0008
+    erosion_evaporation_rate: float = 0.0005
+    erosion_min_height_delta: float = 0.05
+    erosion_repose_slope: float = 0.03
+    erosion_gravity: float = 30.0
+    erosion_sediment_capacity: float = 50.0
+    erosion_dissolving_rate: float = 0.25
+    erosion_deposition_rate: float = 0.001
+    erosion_cell_width: float = 1.0
+
 
 class MapGenerator:
     """生成高度图、地形分类并负责渲染。"""
@@ -46,6 +59,30 @@ class MapGenerator:
         mask = noise.continent_mask(cfg.width, cfg.height)
         heightmap = fbm * 0.65 + mask * 0.35
         heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
+
+        # 应用侵蚀模拟(如果启用)
+        if cfg.enable_erosion:
+            from .erosion import ErosionSimulator, ErosionConfig
+
+            erosion_config = ErosionConfig(
+                iterations=cfg.erosion_iterations,
+                rain_rate=cfg.erosion_rain_rate,
+                evaporation_rate=cfg.erosion_evaporation_rate,
+                min_height_delta=cfg.erosion_min_height_delta,
+                repose_slope=cfg.erosion_repose_slope,
+                gravity=cfg.erosion_gravity,
+                sediment_capacity_constant=cfg.erosion_sediment_capacity,
+                dissolving_rate=cfg.erosion_dissolving_rate,
+                deposition_rate=cfg.erosion_deposition_rate,
+                cell_width=cfg.erosion_cell_width,
+            )
+
+            simulator = ErosionSimulator(erosion_config)
+            heightmap = simulator.simulate(heightmap, verbose=True)
+
+            # 重新归一化
+            heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
+
         return heightmap.astype(np.float32)
 
     def classify_terrain(self, heightmap: np.ndarray) -> np.ndarray:

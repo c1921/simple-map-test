@@ -26,6 +26,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-scale", type=float, default=None)
     parser.add_argument("--sea-level", type=float, default=None)
     parser.add_argument("--snow-level", type=float, default=None)
+
+    # 侵蚀模拟参数
+    parser.add_argument("--enable-erosion", action="store_true", help="启用侵蚀模拟")
+    parser.add_argument("--erosion-iterations", type=int, default=None, help="侵蚀迭代次数")
+    parser.add_argument("--erosion-rain-rate", type=float, default=None, help="降雨率")
+    parser.add_argument("--erosion-evaporation-rate", type=float, default=None, help="蒸发率")
+    parser.add_argument("--erosion-min-height-delta", type=float, default=None, help="最小高度差")
+    parser.add_argument("--erosion-repose-slope", type=float, default=None, help="休止角坡度")
+    parser.add_argument("--erosion-gravity", type=float, default=None, help="重力常数")
+    parser.add_argument("--erosion-sediment-capacity", type=float, default=None, help="沉积物容量系数")
+    parser.add_argument("--erosion-dissolving-rate", type=float, default=None, help="溶蚀率")
+    parser.add_argument("--erosion-deposition-rate", type=float, default=None, help="沉积率")
+    parser.add_argument("--erosion-cell-width", type=float, default=None, help="网格单元宽度")
+
     return parser.parse_args()
 
 
@@ -70,6 +84,18 @@ def run() -> None:
         base_scale=float(pick("base_scale", args, config_data, 160.0)),
         sea_level=float(pick("sea_level", args, config_data, 0.45)),
         snow_level=float(pick("snow_level", args, config_data, 0.9)),
+        # 侵蚀模拟参数
+        enable_erosion=bool(pick("enable_erosion", args, config_data, False)),
+        erosion_iterations=int(pick("erosion_iterations", args, config_data, 100)),
+        erosion_rain_rate=float(pick("erosion_rain_rate", args, config_data, 0.0008)),
+        erosion_evaporation_rate=float(pick("erosion_evaporation_rate", args, config_data, 0.0005)),
+        erosion_min_height_delta=float(pick("erosion_min_height_delta", args, config_data, 0.05)),
+        erosion_repose_slope=float(pick("erosion_repose_slope", args, config_data, 0.03)),
+        erosion_gravity=float(pick("erosion_gravity", args, config_data, 30.0)),
+        erosion_sediment_capacity=float(pick("erosion_sediment_capacity", args, config_data, 50.0)),
+        erosion_dissolving_rate=float(pick("erosion_dissolving_rate", args, config_data, 0.25)),
+        erosion_deposition_rate=float(pick("erosion_deposition_rate", args, config_data, 0.001)),
+        erosion_cell_width=float(pick("erosion_cell_width", args, config_data, 1.0)),
     )
 
     generator = MapGenerator(config)
