@@ -37,6 +37,10 @@ class MapGeneratorConfig:
     erosion_deposition_rate: float = 0.001
     erosion_cell_width: float = 1.0
 
+    # 侵蚀快照参数
+    erosion_snapshot_interval: int = 0  # 0表示不保存快照
+    erosion_snapshots_dir: Optional[Path] = None  # 快照保存目录
+
 
 class MapGenerator:
     """生成高度图、地形分类并负责渲染。"""
@@ -78,7 +82,36 @@ class MapGenerator:
             )
 
             simulator = ErosionSimulator(erosion_config)
-            heightmap = simulator.simulate(heightmap, verbose=True)
+
+            # 准备快照回调（如果需要）
+            callback = None
+            if cfg.erosion_snapshot_interval > 0 and cfg.erosion_snapshots_dir:
+                snapshots_dir = Path(cfg.erosion_snapshots_dir)
+                snapshots_dir.mkdir(parents=True, exist_ok=True)
+
+                def snapshot_callback(step: int, terrain: np.ndarray) -> None:
+                    """在特定步骤保存快照"""
+                    if step % cfg.erosion_snapshot_interval == 0:
+                        # 归一化地形
+                        normalized = (terrain - terrain.min()) / (np.ptp(terrain) + 1e-6)
+                        normalized = normalized.astype(np.float32)
+
+                        # 生成彩色地形图
+                        colors = self.classify_terrain(normalized)
+
+                        # 保存彩色图
+                        color_path = snapshots_dir / f"erosion_step{step:04d}.png"
+                        self.render(colors, normalized, color_path)
+
+                        # 保存高度图
+                        height_path = snapshots_dir / f"erosion_step{step:04d}_height.png"
+                        self.save_heightmap(normalized, height_path)
+
+                        print(f"  已保存快照: 步骤 {step}")
+
+                callback = snapshot_callback
+
+            heightmap = simulator.simulate(heightmap, verbose=True, callback=callback)
 
             # 重新归一化
             heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)

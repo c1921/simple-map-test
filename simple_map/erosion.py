@@ -45,13 +45,15 @@ class ErosionSimulator:
         """
         self.config = config
 
-    def simulate(self, terrain: np.ndarray, verbose: bool = True) -> np.ndarray:
+    def simulate(self, terrain: np.ndarray, verbose: bool = True, callback=None) -> np.ndarray:
         """
         执行侵蚀模拟
 
         参数:
             terrain: 输入地形高度图 (归一化到[0,1])
             verbose: 是否打印进度信息
+            callback: 可选的回调函数，签名为 callback(step: int, terrain: np.ndarray)
+                     在每次迭代后调用，用于保存中间结果等操作
 
         返回:
             侵蚀后的地形高度图
@@ -129,6 +131,10 @@ class ErosionSimulator:
 
             # 11. 蒸发
             water *= (1 - self.config.evaporation_rate)
+
+            # 12. 调用回调函数（如果提供）
+            if callback is not None:
+                callback(i + 1, terrain.copy())
 
         if verbose:
             print(f'侵蚀模拟完成: {self.config.iterations} 次迭代')

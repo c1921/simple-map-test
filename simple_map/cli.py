@@ -40,6 +40,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--erosion-deposition-rate", type=float, default=None, help="沉积率")
     parser.add_argument("--erosion-cell-width", type=float, default=None, help="网格单元宽度")
 
+    # 侵蚀快照参数
+    parser.add_argument("--erosion-snapshot-interval", type=int, default=None, help="快照间隔步数（0表示不保存快照）")
+    parser.add_argument("--erosion-snapshots-dir", type=Path, default=None, help="快照保存目录")
+
     return parser.parse_args()
 
 
@@ -107,6 +111,9 @@ def run() -> None:
         erosion_dissolving_rate=float(pick("erosion_dissolving_rate", args, config_data, 0.25)),
         erosion_deposition_rate=float(pick("erosion_deposition_rate", args, config_data, 0.001)),
         erosion_cell_width=float(pick("erosion_cell_width", args, config_data, 1.0)),
+        # 侵蚀快照参数
+        erosion_snapshot_interval=int(pick("erosion_snapshot_interval", args, config_data, 0)),
+        erosion_snapshots_dir=_resolve_path(pick("erosion_snapshots_dir", args, config_data, None)),
     )
 
     generator = MapGenerator(config)
@@ -133,3 +140,10 @@ def _resolve_seed(args: argparse.Namespace, config: Dict[str, Any]) -> int | Non
     if not use_seed:
         return None
     return pick("seed", args, config, None)
+
+
+def _resolve_path(value: Any) -> Path | None:
+    """将字符串路径转换为Path对象，None保持为None"""
+    if value is None:
+        return None
+    return Path(value)
