@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from . import noise
+from . import noise, rendering
 
 
 @dataclass
@@ -40,6 +40,13 @@ class MapGeneratorConfig:
     # 侵蚀快照参数
     erosion_snapshot_interval: int = 0  # 0表示不保存快照
     erosion_snapshots_dir: Optional[Path] = None  # 快照保存目录
+
+    # 渲染相关参数
+    render_mode: str = "classic"
+    gradient_preset: str = "ocean_land"
+    light_direction: Tuple[float, float, float] = (-0.2, -0.5, 0.7)
+    ambient_light: float = 0.35
+    normal_strength: float = 6.0
 
 
 class MapGenerator:
@@ -96,12 +103,9 @@ class MapGenerator:
                         normalized = (terrain - terrain.min()) / (np.ptp(terrain) + 1e-6)
                         normalized = normalized.astype(np.float32)
 
-                        # 生成彩色地形图
-                        colors = self.classify_terrain(normalized)
-
                         # 保存彩色图
                         color_path = snapshots_dir / f"erosion_step{step:04d}.png"
-                        self.render(colors, normalized, color_path)
+                        self.render_map(normalized, color_path)
 
                         # 保存高度图
                         height_path = snapshots_dir / f"erosion_step{step:04d}_height.png"
@@ -157,3 +161,24 @@ class MapGenerator:
 
     def save_heightmap(self, heightmap: np.ndarray, path: Path) -> None:
         plt.imsave(path, heightmap, cmap="gray", origin="lower")
+
+    def render_map(self, heightmap: np.ndarray, output: Path, *, dpi: int = 150) -> None:
+        mode = (self.config.render_mode or "classic").lower()
+        if mode == "realistic":
+            gradient = rendering.resolve_gradient(
+                self.config.gradient_preset,
+                self.config.sea_level,
+                self.config.snow_level,
+            )
+            rendering.render_realistic(
+                heightmap,
+                output,
+                gradient=gradient,
+                light_direction=self.config.light_direction,
+                ambient_light=self.config.ambient_light,
+                normal_strength=self.config.normal_strength,
+            )
+            return
+
+        colors = self.classify_terrain(heightmap)
+        self.render(colors, heightmap, output, dpi=dpi)

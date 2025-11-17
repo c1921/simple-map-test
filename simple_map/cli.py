@@ -44,6 +44,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--erosion-snapshot-interval", type=int, default=None, help="快照间隔步数（0表示不保存快照）")
     parser.add_argument("--erosion-snapshots-dir", type=Path, default=None, help="快照保存目录")
 
+    # 渲染参数
+    parser.add_argument(
+        "--render-mode",
+        type=str,
+        choices=["classic", "realistic"],
+        default=None,
+        help="选择渲染模式：classic(默认) 或 realistic",
+    )
+    parser.add_argument("--gradient-preset", type=str, default=None, help="写实渲染使用的颜色梯度预设")
+    parser.add_argument(
+        "--light-direction",
+        type=float,
+        nargs=3,
+        metavar=("LX", "LY", "LZ"),
+        default=None,
+        help="写实渲染光照方向",
+    )
+    parser.add_argument("--ambient-light", type=float, default=None, help="写实渲染环境光强度(0-1)")
+    parser.add_argument("--normal-strength", type=float, default=None, help="写实渲染法线强度")
+
     return parser.parse_args()
 
 
@@ -114,15 +134,20 @@ def run() -> None:
         # 侵蚀快照参数
         erosion_snapshot_interval=int(pick("erosion_snapshot_interval", args, config_data, 0)),
         erosion_snapshots_dir=_resolve_path(pick("erosion_snapshots_dir", args, config_data, None)),
+        # 渲染参数
+        render_mode=str(pick("render_mode", args, config_data, "classic")),
+        gradient_preset=str(pick("gradient_preset", args, config_data, "ocean_land")),
+        light_direction=_to_float_tuple(pick("light_direction", args, config_data, (-0.2, -0.5, 0.7)), 3),
+        ambient_light=float(pick("ambient_light", args, config_data, 0.35)),
+        normal_strength=float(pick("normal_strength", args, config_data, 6.0)),
     )
 
     generator = MapGenerator(config)
     heightmap = generator.generate_heightmap()
-    colors = generator.classify_terrain(heightmap)
 
     output_path = Path(pick("out", args, config_data, "map.png"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    generator.render(colors, heightmap, output_path)
+    generator.render_map(heightmap, output_path)
 
     heightmap_path = pick("heightmap", args, config_data, None)
     if heightmap_path:
@@ -147,3 +172,14 @@ def _resolve_path(value: Any) -> Path | None:
     if value is None:
         return None
     return Path(value)
+
+
+def _to_float_tuple(value: Any, size: int) -> tuple[float, ...]:
+    if isinstance(value, (list, tuple)):
+        if len(value) != size:
+            raise ValueError(f"向量长度应为 {size}，收到 {len(value)}")
+        return tuple(float(v) for v in value)
+    if value is None:
+        raise ValueError("缺少必需的向量参数")
+    # 单值也可以——复制为所有分量
+    return tuple(float(value) for _ in range(size))

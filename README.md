@@ -7,6 +7,7 @@
 - 基于 Perlin 噪声的程序化地形生成
 - **水力侵蚀模拟**：可选的真实感侵蚀效果,使地形更自然
 - 可配置的地形参数(海平面、雪线、噪声参数等)
+- **双渲染模式**：经典等高线风格与参考 `reference/main.py` 的写实光照风格
 - 支持配置文件和命令行参数
 
 ## 安装依赖
@@ -49,6 +50,14 @@ python -m simple_map.cli --config map_config.json
 - `--sea-level` - 海平面高度(默认 0.45)
 - `--snow-level` - 雪线高度(默认 0.9)
 
+### 渲染参数
+
+- `--render-mode` - `classic`(默认) 使用 Matplotlib 等高线渲染；`realistic` 使用参考脚本的写实渲染
+- `--gradient-preset` - 写实渲染的颜色梯度预设，如 `ocean_land`、`reference`、`desert`
+- `--light-direction` - 写实渲染光源方向，示例：`--light-direction -0.2 -0.5 0.7`
+- `--ambient-light` - 写实渲染环境光强度(0~1)
+- `--normal-strength` - 写实渲染法线强度，增大可强化明暗反差
+
 ### 侵蚀模拟参数
 
 启用侵蚀模拟可以让地形更加真实,产生河谷、冲积平原等自然地貌。
@@ -79,6 +88,11 @@ python -m simple_map.cli --config map_config.json
 ```
 
 脚本会输出彩色渲染图，包含大陆轮廓与地形等高线；如果提供 `--heightmap`，还会额外保存灰度高度图。
+
+### 渲染模式说明
+
+- **classic**：沿用最初的配色与等高线渲染方式，适合快速查看地貌结构。
+- **realistic**：复用了 `reference/main.py` 中的颜色梯度、法线估计与光照计算，输出具有柔和漫反射效果的 PNG。可通过梯度预设与光源参数自定义风格。
 
 ## 侵蚀模拟原理
 
