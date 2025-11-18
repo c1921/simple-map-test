@@ -9,6 +9,7 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import ndimage
 
 from . import noise, rendering
 
@@ -50,6 +51,17 @@ class MapGeneratorConfig:
     light_direction: Tuple[float, float, float] = (-0.2, -0.5, 0.7)
     ambient_light: float = 0.35
     normal_strength: float = 6.0
+    output_scale: float = 1.0
+    output_interpolation: str = "bicubic"
+    output_detail_noise_strength: float = 0.0
+    output_detail_noise_scale: float = 24.0
+    output_detail_noise_octaves: int = 3
+    output_detail_noise_persistence: float = 0.55
+    output_detail_noise_lacunarity: float = 2.2
+    pre_erosion_map: Optional[Path] = None
+    pre_erosion_heightmap: Optional[Path] = None
+    pre_detail_map: Optional[Path] = None
+    pre_detail_heightmap: Optional[Path] = None
 
 
 class MapGenerator:
@@ -58,6 +70,8 @@ class MapGenerator:
     def __init__(self, config: MapGeneratorConfig) -> None:
         self.config = config
         self._rng = np.random.default_rng(config.seed)
+        self._detail_noise_seed = self._init_detail_noise_seed()
+        self._pre_erosion_heightmap: Optional[np.ndarray] = None
 
     def generate_heightmap(self) -> np.ndarray:
         # 记录总开始时间
@@ -97,6 +111,8 @@ class MapGenerator:
             heightmap *= edge_mask
             edge_time = time.time() - edge_start
             print(f"边缘衰减完成，耗时: {edge_time:.2f}s")
+
+        self._pre_erosion_heightmap = heightmap.copy()
 
         # 应用侵蚀模拟(如果启用)
         if cfg.enable_erosion:
@@ -186,8 +202,9 @@ class MapGenerator:
         *,
         dpi: int = 150,
     ) -> None:
-        fig_w = self.config.width / dpi
-        fig_h = self.config.height / dpi
+        height, width = colors.shape[:2]
+        fig_w = width / dpi
+        fig_h = height / dpi
         fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
         ax.imshow(colors, origin="lower")
         ax.contour(heightmap, levels=[self.config.sea_level], colors="#102542", linewidths=0.75)
@@ -198,10 +215,34 @@ class MapGenerator:
         fig.savefig(output, bbox_inches="tight", pad_inches=0)
         plt.close(fig)
 
-    def save_heightmap(self, heightmap: np.ndarray, path: Path) -> None:
+    def save_heightmap(
+        self,
+        heightmap: np.ndarray,
+        path: Path,
+        *,
+        apply_output_scale: bool = True,
+        log_label: str | None = None,
+    ) -> None:
+        start = time.time()
+        if apply_output_scale:
+            heightmap = self.prepare_heightmap_for_output(heightmap)
         plt.imsave(path, heightmap, cmap="gray", origin="lower")
+        duration = time.time() - start
+        label = log_label or f"高度图保存 ({path})"
+        print(f"{label}耗时: {duration:.2f}s")
 
-    def render_map(self, heightmap: np.ndarray, output: Path, *, dpi: int = 150) -> None:
+    def render_map(
+        self,
+        heightmap: np.ndarray,
+        output: Path,
+        *,
+        dpi: int = 150,
+        apply_output_scale: bool = True,
+        log_label: str | None = None,
+    ) -> None:
+        start = time.time()
+        if apply_output_scale:
+            heightmap = self.prepare_heightmap_for_output(heightmap)
         mode = (self.config.render_mode or "classic").lower()
         if mode == "realistic":
             gradient = rendering.resolve_gradient(
@@ -222,3 +263,107 @@ class MapGenerator:
 
         colors = self.classify_terrain(heightmap)
         self.render(colors, heightmap, output, dpi=dpi)
+        duration = time.time() - start
+        label = log_label or f"渲染输出 ({output})"
+        print(f"{label}耗时: {duration:.2f}s")
+
+    def prepare_heightmap_for_output(
+        self,
+        heightmap: np.ndarray,
+        *,
+        apply_detail_noise: bool = True,
+    ) -> np.ndarray:
+        scaled = self._scale_heightmap_for_output(heightmap)
+        detail_strength = float(self.config.output_detail_noise_strength)
+        if apply_detail_noise and detail_strength > 0.0 and self._detail_noise_seed is not None:
+            scaled = self._apply_output_detail_noise(scaled, detail_strength)
+        return np.clip(scaled, 0.0, 1.0)
+
+    def apply_output_detail_noise_to_scaled(self, scaled_heightmap: np.ndarray) -> np.ndarray:
+        detail_strength = float(self.config.output_detail_noise_strength)
+        if detail_strength <= 0.0 or self._detail_noise_seed is None:
+            return scaled_heightmap
+        working = scaled_heightmap.astype(np.float32, copy=True)
+        working = self._apply_output_detail_noise(working, detail_strength)
+        return np.clip(working, 0.0, 1.0)
+
+    def _scale_heightmap_for_output(self, heightmap: np.ndarray) -> np.ndarray:
+        scale = float(self.config.output_scale)
+        if scale <= 0:
+            raise ValueError("output_scale 必须大于 0")
+        needs_scaling = abs(scale - 1.0) >= 1e-6
+        working = heightmap.astype(np.float32, copy=True)
+        if not needs_scaling:
+            return working
+        h, w = working.shape[:2]
+        target_h = max(1, int(round(h * scale)))
+        target_w = max(1, int(round(w * scale)))
+        zoom_h = target_h / h
+        zoom_w = target_w / w
+        order = _resolve_interpolation_order(self.config.output_interpolation)
+        zoom_factors = (zoom_h, zoom_w)
+        working = ndimage.zoom(
+            working,
+            zoom_factors,
+            order=order,
+            mode="reflect",
+        ).astype(np.float32, copy=False)
+        return working
+
+    def _apply_output_detail_noise(self, data: np.ndarray, strength: float) -> np.ndarray:
+        height, width = data.shape[:2]
+        octaves = max(1, int(self.config.output_detail_noise_octaves))
+        base_scale = max(float(self.config.output_detail_noise_scale), 1.0)
+        persistence = float(self.config.output_detail_noise_persistence)
+        lacunarity = float(self.config.output_detail_noise_lacunarity)
+        seed = self._detail_noise_seed_for_shape(width, height)
+        detail = noise.fractal_noise(
+            width,
+            height,
+            octaves=octaves,
+            persistence=persistence,
+            lacunarity=lacunarity,
+            base_scale=base_scale,
+            seed=seed,
+        ).astype(np.float32)
+        detail -= float(np.mean(detail))
+        max_abs = float(np.max(np.abs(detail))) + 1e-6
+        detail /= max_abs
+        return np.clip(data + strength * detail, 0.0, 1.0)
+
+    def _init_detail_noise_seed(self) -> Optional[int]:
+        if self.config.output_detail_noise_strength <= 0:
+            return None
+        base_seed = self.config.seed
+        if base_seed is None:
+            base_seed = int(np.random.default_rng().integers(0, 2**32 - 1))
+        detail_seed = int((int(base_seed) ^ 0xA511E9B3) & 0xFFFFFFFF)
+        if detail_seed == 0:
+            detail_seed = 1
+        return detail_seed
+
+    def _detail_noise_seed_for_shape(self, width: int, height: int) -> int:
+        base = self._detail_noise_seed or 1
+        mix = (base ^ (width * 0x9E3779B1) ^ (height * 0x85EBCA77)) & 0xFFFFFFFF
+        if mix == 0:
+            mix = base
+        return mix
+
+    @property
+    def pre_erosion_heightmap(self) -> Optional[np.ndarray]:
+        return None if self._pre_erosion_heightmap is None else self._pre_erosion_heightmap.copy()
+
+
+def _resolve_interpolation_order(method: str | None) -> int:
+    lookup = {
+        "nearest": 0,
+        "linear": 1,
+        "bilinear": 1,
+        "quadratic": 2,
+        "bicubic": 3,
+        "cubic": 3,
+        "quartic": 4,
+        "quintic": 5,
+    }
+    key = (method or "bicubic").strip().lower()
+    return lookup.get(key, 3)

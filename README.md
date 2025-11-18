@@ -59,6 +59,42 @@ python -m simple_map.cli --config map_config.json
 - `--light-direction` - 写实渲染光源方向，示例：`--light-direction -0.2 -0.5 0.7`
 - `--ambient-light` - 写实渲染环境光强度(0~1)
 - `--normal-strength` - 写实渲染法线强度，增大可强化明暗反差
+- `--output-scale` - 对渲染结果与高度图进行插值放大，例如 `--output-scale 2.0` 输出 2 倍尺寸
+- `--output-interpolation` - 放大时使用的插值方式，可选 `nearest`/`bilinear`/`bicubic`/`quadratic`/`quartic`/`quintic`
+- `--output-detail-noise-strength` - 放大后叠加轻微分型噪声的强度(0 表示关闭)，缓解像素块感
+- `--output-detail-noise-scale` / `--output-detail-noise-octaves` - 控制细节噪声的尺度与叠加层数
+- `--output-detail-noise-persistence` / `--output-detail-noise-lacunarity` - 调整细节噪声每层振幅衰减与频率倍率
+- `--pre-erosion-map` / `--pre-erosion-heightmap` - 额外导出侵蚀模拟之前的彩色图与高度图
+- `--pre-detail-map` / `--pre-detail-heightmap` - 额外导出添加细节噪声之前（仍含侵蚀效果）的彩色图与高度图
+
+### 输出插值放大
+
+当 `width`/`height` 设置为计算网格分辨率但希望导出更大的 PNG 时，可使用 `output_scale` 与 `output_interpolation`。运行结束后会在保存前对高度图做一次 `scipy.ndimage.zoom` 插值，默认采用 `bicubic`。例如：
+
+```bash
+python -m simple_map.cli --config map_config.json --output-scale 2.5 --output-interpolation quintic
+```
+
+这样即使仍按 1024×1024 网格进行噪声/侵蚀计算，最终输出会被平滑放大为 2560×2560，并保持高度图与彩色图尺寸一致。若放大后仍能看到像素块，可再叠加分型噪声增强细节：
+
+```bash
+python -m simple_map.cli --output-scale 4 --output-interpolation quartic \
+    --output-detail-noise-strength 0.035 --output-detail-noise-scale 18
+```
+
+细节噪声在输出阶段添加，默认只要 `output-detail-noise-strength > 0` 即可启用。根据放大倍数可适当增大强度或减小 `output-detail-noise-scale`（数字越小细节越密集），一般 0.02~0.05 的强度即可明显缓解块状感。
+
+若需要比较不同阶段的效果，可同时开启阶段输出。例如：
+
+```bash
+python -m simple_map.cli --config map_config.json \
+    --pre-erosion-map renders/pre_erosion_map.png \
+    --pre-erosion-heightmap renders/pre_erosion_height.png \
+    --pre-detail-map renders/pre_detail_map.png \
+    --pre-detail-heightmap renders/pre_detail_height.png
+```
+
+其中“侵蚀前”会导出尚未经过侵蚀模拟、但已经完成插值缩放的地图；“添加细节噪声前”导出已完成侵蚀与缩放但未叠加细节噪声的结果，方便与最终输出做对比。
 
 ### 侵蚀模拟参数
 

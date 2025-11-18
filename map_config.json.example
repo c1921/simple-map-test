@@ -33,5 +33,16 @@
     0.7
   ],
   "ambient_light": 0.2,
-  "normal_strength": 18.0
+  "normal_strength": 18.0,
+  "output_scale": 1.0,
+  "output_interpolation": "bicubic",
+  "output_detail_noise_strength": 0.0,
+  "output_detail_noise_scale": 24.0,
+  "output_detail_noise_octaves": 3,
+  "output_detail_noise_persistence": 0.55,
+  "output_detail_noise_lacunarity": 2.2,
+  "pre_erosion_map": "renders/pre_erosion_map.png",
+  "pre_erosion_heightmap": "renders/pre_erosion_height.png",
+  "pre_detail_map": "renders/pre_detail_map.png",
+  "pre_detail_heightmap": "renders/pre_detail_height.png"
 }
