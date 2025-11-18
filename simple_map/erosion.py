@@ -49,6 +49,35 @@ class ErosionSimulator:
             config: 侵蚀配置参数
         """
         self.config = config
+        # 预计算的网格坐标和高斯核将在第一次模拟时初始化
+        self._base_coords = None
+        self._blur_kernel = None
+        self._cached_shape = None
+
+    def _initialize_precomputed_data(self, shape):
+        """
+        预计算meshgrid和高斯核以提高性能
+
+        参数:
+            shape: 地形数组的形状
+        """
+        # 只在形状改变时重新计算
+        if self._cached_shape == shape:
+            return
+
+        # 预计算sample()使用的基础坐标网格
+        self._base_coords = np.array(np.meshgrid(*map(range, shape)))
+
+        # 预计算gaussian_blur()使用的高斯核(sigma=1.5)
+        freqs = tuple(np.fft.fftfreq(n, d=1.0 / n) for n in shape)
+        freq_radial = np.hypot(*np.meshgrid(*freqs))
+        sigma = 1.5
+        sigma2 = sigma**2
+        g = lambda x: ((2 * np.pi * sigma2) ** -0.5) * np.exp(-0.5 * (x / sigma)**2)
+        self._blur_kernel = g(freq_radial)
+        self._blur_kernel /= self._blur_kernel.sum()
+
+        self._cached_shape = shape
 
     def simulate(self, terrain: np.ndarray, verbose: bool = True, callback=None) -> np.ndarray:
         """
@@ -69,6 +98,9 @@ class ErosionSimulator:
         # 复制地形避免修改原始数据
         terrain = terrain.copy().astype(np.float64)
         shape = terrain.shape
+
+        # 预计算meshgrid和高斯核以提高性能
+        self._initialize_precomputed_data(shape)
 
         # 计算网格单元面积
         cell_area = self.config.cell_width ** 2
@@ -102,7 +134,7 @@ class ErosionSimulator:
             gradient /= np.abs(gradient)
 
             # 3. 计算高度差
-            neighbor_height = utils.sample(terrain, -gradient)
+            neighbor_height = utils.sample(terrain, -gradient, self._base_coords)
             height_delta = terrain - neighbor_height
 
             # 4. 计算沉积物容量
@@ -212,8 +244,8 @@ class ErosionSimulator:
         # 计算坡度
         delta = utils.simple_gradient(terrain) / self.config.cell_width
 
-        # 对陡坡区域应用平滑
-        smoothed = utils.gaussian_blur(terrain, sigma=1.5)
+        # 对陡坡区域应用平滑(使用预计算的高斯核)
+        smoothed = utils.gaussian_blur(terrain, sigma=1.5, kernel=self._blur_kernel)
         result = np.select(
             [np.abs(delta) > self.config.repose_slope],
             [smoothed],

@@ -27,20 +27,26 @@ def simple_gradient(a):
     return 1j * dx + dy
 
 
-def sample(a, offset):
+def sample(a, offset, base_coords=None):
     """
     双线性插值采样
 
     参数:
         a: 输入数组
         offset: 偏移量(复数编码: real=dy, imag=dx)
+        base_coords: 预计算的基础坐标网格 (可选, 用于性能优化)
 
     返回:
         在偏移位置的插值结果,使用周期性边界
     """
     shape = np.array(a.shape)
     delta = np.array((offset.real, offset.imag))
-    coords = np.array(np.meshgrid(*map(range, shape))) - delta
+
+    # 使用预计算的meshgrid或动态创建
+    if base_coords is None:
+        coords = np.array(np.meshgrid(*map(range, shape))) - delta
+    else:
+        coords = base_coords - delta
 
     lower_coords = np.floor(coords).astype(int)
     upper_coords = lower_coords + 1
@@ -58,6 +64,18 @@ def sample(a, offset):
     return result
 
 
+# 预定义权重函数以避免重复创建lambda
+_WEIGHT_FN_NEG = lambda x: -x
+_WEIGHT_FN_ZERO = lambda x: 1 - np.abs(x)
+_WEIGHT_FN_POS = lambda x: x
+
+_WEIGHT_FNS = {
+    -1: _WEIGHT_FN_NEG,
+    0: _WEIGHT_FN_ZERO,
+    1: _WEIGHT_FN_POS,
+}
+
+
 def displace(a, delta):
     """
     将数组值按偏移量位移到相邻网格点
@@ -69,11 +87,7 @@ def displace(a, delta):
     返回:
         位移后的数组,值分配到相邻格点(使用权重)
     """
-    fns = {
-        -1: lambda x: -x,
-        0: lambda x: 1 - np.abs(x),
-        1: lambda x: x,
-    }
+    fns = _WEIGHT_FNS
     result = np.zeros_like(a)
     for dx in range(-1, 2):
         wx = np.maximum(fns[dx](delta.real), 0.0)
@@ -84,23 +98,27 @@ def displace(a, delta):
     return result
 
 
-def gaussian_blur(a, sigma=1.0):
+def gaussian_blur(a, sigma=1.0, kernel=None):
     """
     高斯模糊(FFT实现)
 
     参数:
         a: 输入数组
         sigma: 高斯核标准差
+        kernel: 预计算的高斯核 (可选, 用于性能优化)
 
     返回:
         模糊后的数组
     """
-    freqs = tuple(np.fft.fftfreq(n, d=1.0 / n) for n in a.shape)
-    freq_radial = np.hypot(*np.meshgrid(*freqs))
-    sigma2 = sigma**2
-    g = lambda x: ((2 * np.pi * sigma2) ** -0.5) * np.exp(-0.5 * (x / sigma)**2)
-    kernel = g(freq_radial)
-    kernel /= kernel.sum()
+    # 使用预计算的kernel或动态创建
+    if kernel is None:
+        freqs = tuple(np.fft.fftfreq(n, d=1.0 / n) for n in a.shape)
+        freq_radial = np.hypot(*np.meshgrid(*freqs))
+        sigma2 = sigma**2
+        g = lambda x: ((2 * np.pi * sigma2) ** -0.5) * np.exp(-0.5 * (x / sigma)**2)
+        kernel = g(freq_radial)
+        kernel /= kernel.sum()
+
     return np.fft.ifft2(np.fft.fft2(a) * np.fft.fft2(kernel)).real
 
 
