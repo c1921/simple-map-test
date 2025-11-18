@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -59,7 +60,14 @@ class MapGenerator:
         self._rng = np.random.default_rng(config.seed)
 
     def generate_heightmap(self) -> np.ndarray:
+        # 记录总开始时间
+        total_start = time.time()
+
         cfg = self.config
+
+        # 1. 生成噪声
+        print("开始生成噪声...")
+        noise_start = time.time()
         fbm = noise.fractal_noise(
             cfg.width,
             cfg.height,
@@ -72,8 +80,14 @@ class MapGenerator:
         mask = noise.continent_mask(cfg.width, cfg.height)
         heightmap = fbm * 0.65 + mask * 0.35
         heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
+        noise_time = time.time() - noise_start
+        print(f"噪声生成完成，耗时: {noise_time:.2f}s")
+
+        # 2. 边缘衰减
         edge_mask: Optional[np.ndarray] = None
         if cfg.edge_falloff_power > 0:
+            print("应用边缘衰减...")
+            edge_start = time.time()
             edge_mask = noise.edge_falloff_mask(
                 cfg.width,
                 cfg.height,
@@ -81,9 +95,12 @@ class MapGenerator:
                 exponent=cfg.edge_falloff_power,
             )
             heightmap *= edge_mask
+            edge_time = time.time() - edge_start
+            print(f"边缘衰减完成，耗时: {edge_time:.2f}s")
 
         # 应用侵蚀模拟(如果启用)
         if cfg.enable_erosion:
+            print("启动侵蚀模拟...")
             from .erosion import ErosionSimulator, ErosionConfig
 
             erosion_config = ErosionConfig(
@@ -130,9 +147,17 @@ class MapGenerator:
             heightmap = simulator.simulate(heightmap, verbose=True, callback=callback)
 
             # 重新归一化
+            print("归一化侵蚀后的地形...")
+            norm_start = time.time()
             heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
             if edge_mask is not None:
                 heightmap *= edge_mask
+            norm_time = time.time() - norm_start
+            print(f"归一化完成，耗时: {norm_time:.2f}s")
+
+        # 计算总耗时
+        total_time = time.time() - total_start
+        print(f"\n=== 地形生成总耗时: {total_time:.2f}s ===\n")
 
         return heightmap.astype(np.float32)
 

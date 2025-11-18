@@ -5,6 +5,7 @@
 
 from dataclasses import dataclass
 from typing import Optional
+import time
 import numpy as np
 from . import erosion_utils as utils
 
@@ -62,6 +63,9 @@ class ErosionSimulator:
         返回:
             侵蚀后的地形高度图
         """
+        # 记录总耗时
+        start_time = time.time()
+
         # 复制地形避免修改原始数据
         terrain = terrain.copy().astype(np.float64)
         shape = terrain.shape
@@ -80,9 +84,9 @@ class ErosionSimulator:
             terrain = self._clamp_ocean_surface(terrain, ocean_mask)
 
         # 主模拟循环
+        iteration_start_time = time.time()
         for i in range(self.config.iterations):
-            if verbose and (i + 1) % 10 == 0:
-                print(f'侵蚀模拟进度: {i + 1} / {self.config.iterations}')
+            step_start_time = time.time()
 
             # 1. 降雨
             water += np.random.rand(*shape) * self.config.rain_rate * cell_area
@@ -147,10 +151,25 @@ class ErosionSimulator:
             if callback is not None:
                 callback(i + 1, terrain.copy())
 
+            # 打印每一步的进度和计时
+            if verbose:
+                step_time = time.time() - step_start_time
+                elapsed = time.time() - iteration_start_time
+                avg_time = elapsed / (i + 1)
+                remaining = avg_time * (self.config.iterations - i - 1)
+                print(f'步骤 {i + 1}/{self.config.iterations} | '
+                      f'本步: {step_time:.4f}s | '
+                      f'已用时: {elapsed:.2f}s | '
+                      f'预计剩余: {remaining:.2f}s')
+
         terrain = self._clamp_ocean_surface(terrain, ocean_mask)
 
+        # 计算总耗时
+        total_time = time.time() - start_time
+
         if verbose:
-            print(f'侵蚀模拟完成: {self.config.iterations} 次迭代')
+            print(f'侵蚀模拟完成: {self.config.iterations} 次迭代 | 总耗时: {total_time:.2f}s | '
+                  f'平均每次迭代: {total_time / self.config.iterations:.4f}s')
 
         return terrain.astype(np.float32)
 
