@@ -1,116 +1,179 @@
 """
-侵蚀模拟工具函数
-移植自参考项目 reference/util.py
+侵蚀模拟工具函数（Numba 优化版）
+完全兼容原版 API，数值等价，但性能大幅提升
 """
 
 import numpy as np
+from numba import njit, prange
 
 
-def lerp(x, y, a):
-    """线性插值: (1-a)*x + a*y"""
-    return (1.0 - a) * x + a * y
-
+# ---------------------------------------------------------
+#  simple_gradient (保留原实现)
+# ---------------------------------------------------------
 
 def simple_gradient(a):
     """
     计算地形梯度(使用复数编码向量)
 
-    参数:
-        a: 地形高度数组
-
     返回:
         复数数组,实部=dx,虚部=dy
-        使用周期性边界条件
+        (注意：你的算法里 real=dy, imag=dx, 我们严格保持)
     """
     dx = 0.5 * (np.roll(a, 1, axis=0) - np.roll(a, -1, axis=0))
     dy = 0.5 * (np.roll(a, 1, axis=1) - np.roll(a, -1, axis=1))
     return 1j * dx + dy
 
 
+# ---------------------------------------------------------
+#  Numba 核心：sample_numba（严格复刻你的 sample 行为）
+# ---------------------------------------------------------
+
+@njit(parallel=True, fastmath=True)
+def sample_numba(a, off_real, off_imag):
+    """
+    Numba 加速版 sample()
+
+    - off_real = offset.real = dy
+    - off_imag = offset.imag = dx
+    - 原版 sample() 使用 base_coords = meshgrid(range(H), range(W))
+      并根据 coords = base_coords - delta 做双线性插值。
+      在这里完全复刻其行为（避免 meshgrid 的巨大开销）。
+    """
+    H, W = a.shape
+    out = np.empty_like(a)
+
+    for i in prange(H):
+        for j in range(W):
+
+            # 等价于：
+            # coords_x = j - off_real[i, j]
+            # coords_y = i - off_imag[i, j]
+            xx = j - off_real[i, j]
+            yy = i - off_imag[i, j]
+
+            # 下界
+            x0 = int(np.floor(xx))
+            y0 = int(np.floor(yy))
+            x1 = x0 + 1
+            y1 = y0 + 1
+
+            # 周期性边界
+            x0 %= W
+            x1 %= W
+            y0 %= H
+            y1 %= H
+
+            # 插值系数
+            tx = xx - np.floor(xx)
+            ty = yy - np.floor(yy)
+
+            # 双线性插值
+            a00 = a[y0, x0]
+            a01 = a[y0, x1]
+            a10 = a[y1, x0]
+            a11 = a[y1, x1]
+
+            out[i, j] = (
+                (1 - ty) * ((1 - tx) * a00 + tx * a01) +
+                 ty      * ((1 - tx) * a10 + tx * a11)
+            )
+
+    return out
+
+
+# ---------------------------------------------------------
+#  外壳：sample() 兼容 erosion.py 的 API
+# ---------------------------------------------------------
+
 def sample(a, offset, base_coords=None):
     """
-    双线性插值采样
+    双线性插值采样 API（外壳）
+    erosion.py 调用格式：sample(a, offset, base_coords)
 
-    参数:
-        a: 输入数组
-        offset: 偏移量(复数编码: real=dy, imag=dx)
-        base_coords: 预计算的基础坐标网格 (可选, 用于性能优化)
-
-    返回:
-        在偏移位置的插值结果,使用周期性边界
+    base_coords 在 Numba 版本中不再使用，但必须保留参数。
     """
-    shape = np.array(a.shape)
-    delta = np.array((offset.real, offset.imag))
-
-    # 使用预计算的meshgrid或动态创建
-    if base_coords is None:
-        coords = np.array(np.meshgrid(*map(range, shape))) - delta
-    else:
-        coords = base_coords - delta
-
-    lower_coords = np.floor(coords).astype(int)
-    upper_coords = lower_coords + 1
-    coord_offsets = coords - lower_coords
-    lower_coords %= shape[:, np.newaxis, np.newaxis]
-    upper_coords %= shape[:, np.newaxis, np.newaxis]
-
-    result = lerp(lerp(a[lower_coords[1], lower_coords[0]],
-                       a[lower_coords[1], upper_coords[0]],
-                       coord_offsets[0]),
-                  lerp(a[upper_coords[1], lower_coords[0]],
-                       a[upper_coords[1], upper_coords[0]],
-                       coord_offsets[0]),
-                  coord_offsets[1])
-    return result
+    off_real = offset.real  # dy
+    off_imag = offset.imag  # dx
+    return sample_numba(a, off_real, off_imag)
 
 
-# 预定义权重函数以避免重复创建lambda
-_WEIGHT_FN_NEG = lambda x: -x
-_WEIGHT_FN_ZERO = lambda x: 1 - np.abs(x)
-_WEIGHT_FN_POS = lambda x: x
+# ---------------------------------------------------------
+#  Numba 核心：displace_numba（完全等价于原 roll 版本）
+# ---------------------------------------------------------
 
-_WEIGHT_FNS = {
-    -1: _WEIGHT_FN_NEG,
-    0: _WEIGHT_FN_ZERO,
-    1: _WEIGHT_FN_POS,
-}
+@njit(parallel=True, fastmath=True)
+def displace_numba(a, delta_real, delta_imag):
+    H, W = a.shape
+    out = np.zeros_like(a)
 
+    for i in prange(H):
+        for j in range(W):
+
+            accum = 0.0
+
+            # dx,dy 的语义：与原版 roll 的顺序一致
+            for dx in range(-1, 2):    # 对应 axis=1（列偏移）
+                for dy in range(-1, 2):  # 对应 axis=0（行偏移）
+
+                    # roll 等价：原位置是 [i-dy, j-dx]
+                    ii = (i - dy) % H
+                    jj = (j - dx) % W
+
+                    # 权重必须取“原位置”的 delta，而不是当前 (i,j)
+                    v_real = delta_real[ii, jj]
+                    v_imag = delta_imag[ii, jj]
+
+                    # fns[dx](real)
+                    if dx == -1:
+                        wx = -v_real
+                    elif dx == 0:
+                        wx = 1.0 - abs(v_real)
+                    else:
+                        wx = v_real
+                    if wx < 0: wx = 0
+
+                    # fns[dy](imag)
+                    if dy == -1:
+                        wy = -v_imag
+                    elif dy == 0:
+                        wy = 1.0 - abs(v_imag)
+                    else:
+                        wy = v_imag
+                    if wy < 0: wy = 0
+
+                    w = wx * wy
+                    if w > 0:
+                        accum += w * a[ii, jj]
+
+            out[i, j] = accum
+
+    return out
+
+
+
+
+# ---------------------------------------------------------
+#  外壳：displace()
+# ---------------------------------------------------------
 
 def displace(a, delta):
     """
-    将数组值按偏移量位移到相邻网格点
-
-    参数:
-        a: 输入数组
-        delta: 位移向量(复数编码: real=dy, imag=dx)
-
-    返回:
-        位移后的数组,值分配到相邻格点(使用权重)
+    API：保持 erosion.py 中 displace(a, gradient) 调用不变
     """
-    fns = _WEIGHT_FNS
-    result = np.zeros_like(a)
-    for dx in range(-1, 2):
-        wx = np.maximum(fns[dx](delta.real), 0.0)
-        for dy in range(-1, 2):
-            wy = np.maximum(fns[dy](delta.imag), 0.0)
-            result += np.roll(np.roll(wx * wy * a, dy, axis=0), dx, axis=1)
+    return displace_numba(a, delta.real, delta.imag)
 
-    return result
 
+# ---------------------------------------------------------
+#  gaussian_blur（保持原实现，不动）
+# ---------------------------------------------------------
 
 def gaussian_blur(a, sigma=1.0, kernel=None):
     """
     高斯模糊(FFT实现)
 
-    参数:
-        a: 输入数组
-        sigma: 高斯核标准差
-        kernel: 预计算的高斯核 (可选, 用于性能优化)
-
-    返回:
-        模糊后的数组
+    注：你已经在 erosion.py 用 kernel 预计算提升性能，
+        这里保持原功能即可。
     """
-    # 使用预计算的kernel或动态创建
     if kernel is None:
         freqs = tuple(np.fft.fftfreq(n, d=1.0 / n) for n in a.shape)
         freq_radial = np.hypot(*np.meshgrid(*freqs))
@@ -122,15 +185,9 @@ def gaussian_blur(a, sigma=1.0, kernel=None):
     return np.fft.ifft2(np.fft.fft2(a) * np.fft.fft2(kernel)).real
 
 
+# ---------------------------------------------------------
+# normalize
+# ---------------------------------------------------------
+
 def normalize(x, bounds=(0, 1)):
-    """
-    归一化数组值到指定范围
-
-    参数:
-        x: 输入数组
-        bounds: 目标范围 (min, max)
-
-    返回:
-        归一化后的数组
-    """
     return np.interp(x, (x.min(), x.max()), bounds)
