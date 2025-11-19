@@ -215,13 +215,21 @@ def render_realistic(
     light_direction: Sequence[float],
     ambient_light: float,
     normal_strength: float,
+    land_mask: np.ndarray | None = None,
 ) -> None:
     normalized = np.clip(heightmap, 0.0, 1.0).astype(np.float32)
     toned = np.power(normalized, 1.3)
     normals = compute_normals_sobel(toned, strength=normal_strength)
 
     ocean_gradient, land_gradient = _split_gradient_by_sea_level(gradient, sea_level)
-    ocean_mask = normalized <= sea_level
+
+    # 如果提供了陆地mask,则使用它来确定海洋区域
+    # 海洋 = 不在陆地mask内的区域
+    if land_mask is not None:
+        ocean_mask = ~land_mask.astype(bool)
+    else:
+        # 回退到基于高度的判断
+        ocean_mask = normalized <= sea_level
 
     colors = np.zeros(toned.shape + (3,), dtype=np.float32)
     if ocean_gradient:

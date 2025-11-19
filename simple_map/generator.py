@@ -75,6 +75,7 @@ class MapGeneratorConfig:
     pre_detail_map: Optional[Path] = None
     pre_detail_heightmap: Optional[Path] = None
     coastline_mask: Optional[Path] = None
+    coastline_mask_raw: Optional[Path] = None  # 原始mask(未填充空洞)
 
 
 class MapGenerator:
@@ -279,6 +280,8 @@ class MapGenerator:
                 self.config.sea_level,
                 self.config.snow_level,
             )
+            # 生成陆地mask用于渲染
+            land_mask = self._generate_land_mask(heightmap)
             rendering.render_realistic(
                 heightmap,
                 output,
@@ -287,7 +290,11 @@ class MapGenerator:
                 light_direction=self.config.light_direction,
                 ambient_light=self.config.ambient_light,
                 normal_strength=self.config.normal_strength,
+                land_mask=land_mask,
             )
+            duration = time.time() - start
+            label = log_label or f"渲染输出 ({output})"
+            print(f"{label}耗时: {duration:.2f}s")
             return
 
         colors = self.classify_terrain(heightmap)
@@ -527,27 +534,58 @@ class MapGenerator:
     def pre_erosion_heightmap(self) -> Optional[np.ndarray]:
         return None if self._pre_erosion_heightmap is None else self._pre_erosion_heightmap.copy()
 
-    def save_coastline_mask(self, heightmap: np.ndarray, path: Path) -> None:
+    def _generate_land_mask(self, heightmap: np.ndarray) -> np.ndarray:
+        """生成陆地mask,填充陆地内部的空洞。
+
+        Args:
+            heightmap: 高度图数据
+
+        Returns:
+            陆地mask数组 (True=陆地, False=海洋)
+        """
+        from scipy.ndimage import binary_fill_holes
+
+        # 创建初始二值mask: 陆地为1, 海洋为0
+        initial_mask = (heightmap >= self.config.sea_level).astype(np.uint8)
+
+        # 填充所有被陆地包围的空洞
+        filled_mask = binary_fill_holes(initial_mask)
+
+        return filled_mask
+
+    def save_coastline_mask(self, heightmap: np.ndarray, path: Path, *, filled: bool = True) -> None:
         """保存海岸线mask图片。
 
         Args:
             heightmap: 高度图数据
             path: 输出路径
+            filled: 是否填充陆地内部的空洞。True=填充后的mask, False=原始mask
 
         生成的mask图片中:
-        - 白色(255) = 陆地 (高度 >= sea_level)
-        - 黑色(0) = 海洋 (高度 < sea_level)
+        - 白色(255) = 陆地
+        - 黑色(0) = 海洋
+
+        当filled=True时,陆地包括内部的湖泊/低洼区域(被陆地包围的低于海平面的区域)
+        当filled=False时,仅基于海平面高度判断,低于海平面的区域都是黑色
         """
         start = time.time()
 
-        # 创建二值mask: 陆地为1, 海洋为0
-        mask = (heightmap >= self.config.sea_level).astype(np.uint8) * 255
+        if filled:
+            # 生成填充后的陆地mask
+            mask_bool = self._generate_land_mask(heightmap)
+        else:
+            # 生成原始mask(不填充空洞)
+            mask_bool = (heightmap >= self.config.sea_level).astype(bool)
+
+        # 转换为0-255范围
+        mask = mask_bool.astype(np.uint8) * 255
 
         # 保存为灰度图
         plt.imsave(path, mask, cmap='gray', origin='lower', vmin=0, vmax=255)
 
         duration = time.time() - start
-        print(f"海岸线mask已保存: {path} (耗时: {duration:.2f}s)")
+        mask_type = "填充后" if filled else "原始"
+        print(f"海岸线mask({mask_type})已保存: {path} (耗时: {duration:.2f}s)")
 
 
 
