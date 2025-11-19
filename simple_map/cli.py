@@ -158,6 +158,12 @@ def pick(setting: str, args: argparse.Namespace, config: Dict[str, Any], default
         if setting in config:
             return config[setting]
         return default
+    if setting == "use_seed":
+        if value is True:
+            return True
+        if setting in config:
+            return bool(config[setting])
+        return default
 
     if value is not None:
         return value
