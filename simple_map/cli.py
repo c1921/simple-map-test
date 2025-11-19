@@ -98,6 +98,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="细节噪声频率增长系数(>1.0)",
     )
+    parser.add_argument(
+        "--output-detail-noise-min-level",
+        type=float,
+        default=None,
+        help="细节噪声开始作用的最低高度(0-1)，低于该值不加噪声",
+    )
+    parser.add_argument(
+        "--output-detail-noise-full-level",
+        type=float,
+        default=None,
+        help="细节噪声完全生效的高度(0-1)，介于 min/full 之间会线性过渡",
+    )
     parser.add_argument("--pre-erosion-map", type=Path, default=None, help="额外保存侵蚀前的彩色地图")
     parser.add_argument("--pre-erosion-heightmap", type=Path, default=None, help="额外保存侵蚀前的高度图")
     parser.add_argument("--pre-detail-map", type=Path, default=None, help="额外保存添加细节噪声前的彩色地图")
@@ -189,6 +201,8 @@ def run() -> None:
         output_detail_noise_octaves=int(pick("output_detail_noise_octaves", args, config_data, 3)),
         output_detail_noise_persistence=float(pick("output_detail_noise_persistence", args, config_data, 0.55)),
         output_detail_noise_lacunarity=float(pick("output_detail_noise_lacunarity", args, config_data, 2.2)),
+        output_detail_noise_min_level=float(pick("output_detail_noise_min_level", args, config_data, 0.0)),
+        output_detail_noise_full_level=float(pick("output_detail_noise_full_level", args, config_data, 1.0)),
         pre_erosion_map=_resolve_path(pick("pre_erosion_map", args, config_data, None)),
         pre_erosion_heightmap=_resolve_path(pick("pre_erosion_heightmap", args, config_data, None)),
         pre_detail_map=_resolve_path(pick("pre_detail_map", args, config_data, None)),

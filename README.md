@@ -64,6 +64,7 @@ python -m simple_map.cli --config map_config.json
 - `--output-detail-noise-strength` - 放大后叠加轻微分型噪声的强度(0 表示关闭)，缓解像素块感
 - `--output-detail-noise-scale` / `--output-detail-noise-octaves` - 控制细节噪声的尺度与叠加层数
 - `--output-detail-noise-persistence` / `--output-detail-noise-lacunarity` - 调整细节噪声每层振幅衰减与频率倍率
+- `--output-detail-noise-min-level` / `--output-detail-noise-full-level` - 指定细节噪声作用的高度范围，低于 min-level 不加噪声，在 min/full 之间线性过渡，达到 full-level 后完全生效
 - `--pre-erosion-map` / `--pre-erosion-heightmap` - 额外导出侵蚀模拟之前的彩色图与高度图
 - `--pre-detail-map` / `--pre-detail-heightmap` - 额外导出添加细节噪声之前（仍含侵蚀效果）的彩色图与高度图
 
@@ -83,6 +84,15 @@ python -m simple_map.cli --output-scale 4 --output-interpolation quartic \
 ```
 
 细节噪声在输出阶段添加，默认只要 `output-detail-noise-strength > 0` 即可启用。根据放大倍数可适当增大强度或减小 `output-detail-noise-scale`（数字越小细节越密集），一般 0.02~0.05 的强度即可明显缓解块状感。
+
+如果只想在高地/山地上增加细节，可以利用高度阈值进行渐变控制：
+
+```bash
+python -m simple_map.cli --output-detail-noise-strength 0.035 \
+    --output-detail-noise-min-level 0.45 --output-detail-noise-full-level 0.5
+```
+
+上述命令会让高度小于 0.45 的区域完全不加噪声，在 0.45~0.5 之间线性过渡，0.5 以上区域完全叠加细节。通过调节两个阈值即可覆盖海岸、丘陵或山地等不同范围。
 
 若需要比较不同阶段的效果，可同时开启阶段输出。例如：
 

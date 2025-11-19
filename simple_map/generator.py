@@ -58,6 +58,8 @@ class MapGeneratorConfig:
     output_detail_noise_octaves: int = 3
     output_detail_noise_persistence: float = 0.55
     output_detail_noise_lacunarity: float = 2.2
+    output_detail_noise_min_level: float = 0.0
+    output_detail_noise_full_level: float = 1.0
     pre_erosion_map: Optional[Path] = None
     pre_erosion_heightmap: Optional[Path] = None
     pre_detail_map: Optional[Path] = None
@@ -329,7 +331,11 @@ class MapGenerator:
         detail -= float(np.mean(detail))
         max_abs = float(np.max(np.abs(detail))) + 1e-6
         detail /= max_abs
-        return np.clip(data + strength * detail, 0.0, 1.0)
+        weights = self._detail_noise_weights(data)
+        if np.all(weights <= 0.0):
+            return data
+        weighted_detail = detail * weights
+        return np.clip(data + strength * weighted_detail, 0.0, 1.0)
 
     def _init_detail_noise_seed(self) -> Optional[int]:
         if self.config.output_detail_noise_strength <= 0:
@@ -348,6 +354,17 @@ class MapGenerator:
         if mix == 0:
             mix = base
         return mix
+
+    def _detail_noise_weights(self, heightmap: np.ndarray) -> np.ndarray:
+        min_level = float(np.clip(self.config.output_detail_noise_min_level, 0.0, 1.0))
+        full_level = float(np.clip(self.config.output_detail_noise_full_level, 0.0, 1.0))
+        epsilon = 1e-6
+        if full_level <= min_level + epsilon:
+            weights = (heightmap >= full_level).astype(np.float32)
+        else:
+            weights = (heightmap - min_level) / (full_level - min_level)
+            weights = np.clip(weights, 0.0, 1.0)
+        return weights.astype(np.float32, copy=False)
 
     @property
     def pre_erosion_heightmap(self) -> Optional[np.ndarray]:

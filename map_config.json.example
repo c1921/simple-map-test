@@ -41,6 +41,8 @@
   "output_detail_noise_octaves": 3,
   "output_detail_noise_persistence": 0.55,
   "output_detail_noise_lacunarity": 2.2,
+  "output_detail_noise_min_level": 0.45,
+  "output_detail_noise_full_level": 0.5,
   "pre_erosion_map": "renders/pre_erosion_map.png",
   "pre_erosion_heightmap": "renders/pre_erosion_height.png",
   "pre_detail_map": "renders/pre_detail_map.png",
