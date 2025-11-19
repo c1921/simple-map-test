@@ -89,9 +89,9 @@ class MapGenerator:
         cfg = self.config
 
         # 1. 生成噪声
-        print("开始生成噪声...")
+        print("开始生成噪声 (Ridged Multifractal)...")
         noise_start = time.time()
-        fbm = noise.fractal_noise(
+        ridged = noise.ridged_multifractal(
             cfg.width,
             cfg.height,
             octaves=cfg.octaves,
@@ -100,9 +100,9 @@ class MapGenerator:
             base_scale=cfg.base_scale,
             seed=self._rng.integers(0, 2**32 - 1),
         )
-        fbm = self._apply_domain_warp(fbm)
+        ridged = self._apply_domain_warp(ridged)
         mask = noise.continent_mask(cfg.width, cfg.height)
-        heightmap = fbm * 0.65 + mask * 0.35
+        heightmap = ridged * 0.65 + mask * 0.35
         heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
         noise_time = time.time() - noise_start
         print(f"噪声生成完成，耗时: {noise_time:.2f}s")

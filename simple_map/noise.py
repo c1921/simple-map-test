@@ -89,6 +89,45 @@ def fractal_noise(
     return noise / max_amplitude
 
 
+def ridged_multifractal(
+    width: int,
+    height: int,
+    *,
+    octaves: int,
+    persistence: float,
+    lacunarity: float,
+    base_scale: float,
+    seed: int,
+) -> np.ndarray:
+    """Ridged Multifractal 噪声。
+
+    与 fBm 不同，Ridged Multifractal 会锐化噪声值，
+    创建锐利的山谷特征。
+    """
+    rng = np.random.default_rng(seed)
+    amplitude = 1.0
+    frequency = 1.0
+    noise = np.zeros((height, width), dtype=np.float32)
+    max_amplitude = 0.0
+
+    for _ in range(octaves):
+        octave_seed = rng.integers(0, 2**32 - 1)
+        scale = base_scale / frequency
+        octave_noise = perlin(width, height, scale, int(octave_seed))
+
+        # Ridged Multifractal 的关键：取绝对值创建锐利山谷
+        octave_noise = np.abs(octave_noise)
+
+        noise += amplitude * octave_noise
+        max_amplitude += amplitude
+        amplitude *= persistence
+        frequency *= lacunarity
+
+    if max_amplitude == 0:
+        return noise
+    return noise / max_amplitude
+
+
 def continent_mask(width: int, height: int, falloff: float = 2.5) -> np.ndarray:
     """构造岛屿式大陆轮廓。"""
 
