@@ -272,3 +272,81 @@ def _coastline_mask(ocean_mask: np.ndarray) -> np.ndarray:
         | np.roll(ocean_mask, -1, axis=1)
     )
     return (~ocean_mask) & neighbors
+
+
+# --------------------------- 宜居度计算 ---------------------------
+
+
+def compute_habitability_score(heightmap: np.ndarray, land_mask: np.ndarray) -> np.ndarray:
+    """计算陆地区域的宜居度分数。
+
+    宜居度基于地形平坦程度，平坦的平原、谷底、高地等区域宜居度高。
+
+    Args:
+        heightmap: 高度图数据 (0-1)
+        land_mask: 陆地mask (True=陆地, False=海洋)
+
+    Returns:
+        宜居度分数 (0-1)，0=不宜居，1=最宜居
+    """
+    # 计算地形梯度（坡度）
+    # 使用Sobel算子计算x和y方向的梯度
+    from scipy.ndimage import sobel
+
+    dx = sobel(heightmap, axis=1, mode='reflect')
+    dy = sobel(heightmap, axis=0, mode='reflect')
+
+    # 计算梯度幅值（坡度）
+    gradient_magnitude = np.sqrt(dx**2 + dy**2)
+
+    # 归一化梯度
+    if gradient_magnitude.max() > 0:
+        gradient_magnitude = gradient_magnitude / gradient_magnitude.max()
+
+    # 计算宜居度：坡度越小，宜居度越高
+    # 使用指数函数使变化更平滑
+    habitability = np.exp(-gradient_magnitude * 8.0)
+
+    # 仅保留陆地区域的宜居度
+    habitability = habitability * land_mask.astype(np.float32)
+
+    return habitability.astype(np.float32)
+
+
+def render_habitability_map(
+    heightmap: np.ndarray,
+    output: Path,
+    *,
+    land_mask: np.ndarray,
+) -> None:
+    """渲染宜居度地图。
+
+    在陆地区域内，根据地形平坦程度使用红绿渐变着色：
+    - 绿色 = 宜居（平坦的平原、谷底、平坦高地）
+    - 红色 = 不宜居（陡峭的山地、峡谷）
+    - 黑色 = 海洋区域
+
+    Args:
+        heightmap: 高度图数据
+        output: 输出路径
+        land_mask: 陆地mask (True=陆地, False=海洋)
+    """
+    # 计算宜居度分数
+    habitability = compute_habitability_score(heightmap, land_mask)
+
+    # 创建RGB图像
+    # 海洋区域：黑色
+    # 陆地区域：红绿渐变 (低宜居度=红色, 高宜居度=绿色)
+    colors = np.zeros(heightmap.shape + (3,), dtype=np.float32)
+
+    # 陆地区域：使用红绿渐变
+    # habitability: 0 (不宜居) -> 红色 (1, 0, 0)
+    # habitability: 1 (宜居) -> 绿色 (0, 1, 0)
+    land_pixels = land_mask.astype(bool)
+    colors[land_pixels, 0] = 1.0 - habitability[land_pixels]  # R: 越不宜居越红
+    colors[land_pixels, 1] = habitability[land_pixels]        # G: 越宜居越绿
+    colors[land_pixels, 2] = 0.0                              # B: 保持为0
+
+    # numpy -> Image 默认左上角为原点，需要翻转保持与 classic 一致
+    pixels = np.flipud(colors)
+    Image.fromarray((pixels * 255).astype(np.uint8)).save(output)

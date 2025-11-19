@@ -76,6 +76,7 @@ class MapGeneratorConfig:
     pre_detail_heightmap: Optional[Path] = None
     coastline_mask: Optional[Path] = None
     coastline_mask_raw: Optional[Path] = None  # 原始mask(未填充空洞)
+    habitability_map: Optional[Path] = None  # 宜居度地图输出路径
 
 
 class MapGenerator:
@@ -586,6 +587,29 @@ class MapGenerator:
         duration = time.time() - start
         mask_type = "填充后" if filled else "原始"
         print(f"海岸线mask({mask_type})已保存: {path} (耗时: {duration:.2f}s)")
+
+    def save_habitability_map(self, heightmap: np.ndarray, path: Path) -> None:
+        """保存宜居度地图。
+
+        Args:
+            heightmap: 高度图数据
+            path: 输出路径
+
+        生成的宜居度图中:
+        - 绿色 = 宜居（平坦的平原、谷底、平坦高地）
+        - 红色 = 不宜居（陡峭的山地、峡谷）
+        - 黑色 = 海洋区域
+        """
+        start = time.time()
+
+        # 生成陆地mask
+        land_mask = self._generate_land_mask(heightmap)
+
+        # 渲染宜居度地图
+        rendering.render_habitability_map(heightmap, path, land_mask=land_mask)
+
+        duration = time.time() - start
+        print(f"宜居度地图已保存: {path} (耗时: {duration:.2f}s)")
 
 
 

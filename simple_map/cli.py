@@ -128,6 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pre-detail-heightmap", type=Path, default=None, help="额外保存添加细节噪声前的高度图")
     parser.add_argument("--coastline-mask", type=Path, default=None, help="保存海岸线mask图片(填充后,白色=陆地包括内部空洞, 黑色=外部海洋)")
     parser.add_argument("--coastline-mask-raw", type=Path, default=None, help="保存原始海岸线mask图片(未填充,基于海平面高度)")
+    parser.add_argument("--habitability-map", type=Path, default=None, help="保存宜居度地图(绿色=宜居平原, 红色=不宜居山地, 黑色=海洋)")
 
     return parser.parse_args()
 
@@ -239,6 +240,7 @@ def run() -> None:
         pre_detail_heightmap=_resolve_path(pick("pre_detail_heightmap", args, config_data, None)),
         coastline_mask=_resolve_path(pick("coastline_mask", args, config_data, None)),
         coastline_mask_raw=_resolve_path(pick("coastline_mask_raw", args, config_data, None)),
+        habitability_map=_resolve_path(pick("habitability_map", args, config_data, None)),
     )
 
     generator = MapGenerator(config)
@@ -269,6 +271,11 @@ def run() -> None:
     if config.coastline_mask_raw:
         config.coastline_mask_raw.parent.mkdir(parents=True, exist_ok=True)
         generator.save_coastline_mask(output_heightmap, config.coastline_mask_raw, filled=False)
+
+    # 保存宜居度地图（如果指定）
+    if config.habitability_map:
+        config.habitability_map.parent.mkdir(parents=True, exist_ok=True)
+        generator.save_habitability_map(output_heightmap, config.habitability_map)
 
     if not config.preview_base_noise:
         _maybe_save_stage_outputs(generator, pre_detail_heightmap, stage="pre_detail")

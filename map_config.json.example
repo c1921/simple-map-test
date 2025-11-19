@@ -57,5 +57,6 @@
   "pre_detail_map": "renders/pre_detail_map.png",
   "pre_detail_heightmap": "renders/pre_detail_height.png",
   "coastline_mask": "renders/coastline_mask.png",
-  "coastline_mask_raw": "renders/coastline_mask_raw.png"
+  "coastline_mask_raw": "renders/coastline_mask_raw.png",
+  "habitability_map": "renders/habitability_map.png"
 }
