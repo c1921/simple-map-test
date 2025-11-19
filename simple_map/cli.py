@@ -126,6 +126,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pre-erosion-heightmap", type=Path, default=None, help="额外保存侵蚀前的高度图")
     parser.add_argument("--pre-detail-map", type=Path, default=None, help="额外保存添加细节噪声前的彩色地图")
     parser.add_argument("--pre-detail-heightmap", type=Path, default=None, help="额外保存添加细节噪声前的高度图")
+    parser.add_argument("--coastline-mask", type=Path, default=None, help="保存海岸线mask图片(白色=陆地, 黑色=海洋)")
 
     return parser.parse_args()
 
@@ -235,6 +236,7 @@ def run() -> None:
         pre_erosion_heightmap=_resolve_path(pick("pre_erosion_heightmap", args, config_data, None)),
         pre_detail_map=_resolve_path(pick("pre_detail_map", args, config_data, None)),
         pre_detail_heightmap=_resolve_path(pick("pre_detail_heightmap", args, config_data, None)),
+        coastline_mask=_resolve_path(pick("coastline_mask", args, config_data, None)),
     )
 
     generator = MapGenerator(config)
@@ -255,6 +257,11 @@ def run() -> None:
         heightmap_path = Path(heightmap_path)
         heightmap_path.parent.mkdir(parents=True, exist_ok=True)
         generator.save_heightmap(output_heightmap, heightmap_path, apply_output_scale=False, log_label="最终高度图保存")
+
+    # 保存海岸线mask（如果指定）
+    if config.coastline_mask:
+        config.coastline_mask.parent.mkdir(parents=True, exist_ok=True)
+        generator.save_coastline_mask(output_heightmap, config.coastline_mask)
 
     if not config.preview_base_noise:
         _maybe_save_stage_outputs(generator, pre_detail_heightmap, stage="pre_detail")

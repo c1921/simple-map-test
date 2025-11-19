@@ -55,5 +55,6 @@
   "pre_erosion_map": "renders/pre_erosion_map.png",
   "pre_erosion_heightmap": "renders/pre_erosion_height.png",
   "pre_detail_map": "renders/pre_detail_map.png",
-  "pre_detail_heightmap": "renders/pre_detail_height.png"
+  "pre_detail_heightmap": "renders/pre_detail_height.png",
+  "coastline_mask": "renders/coastline_mask.png"
 }

@@ -74,6 +74,7 @@ class MapGeneratorConfig:
     pre_erosion_heightmap: Optional[Path] = None
     pre_detail_map: Optional[Path] = None
     pre_detail_heightmap: Optional[Path] = None
+    coastline_mask: Optional[Path] = None
 
 
 class MapGenerator:
@@ -525,6 +526,29 @@ class MapGenerator:
     @property
     def pre_erosion_heightmap(self) -> Optional[np.ndarray]:
         return None if self._pre_erosion_heightmap is None else self._pre_erosion_heightmap.copy()
+
+    def save_coastline_mask(self, heightmap: np.ndarray, path: Path) -> None:
+        """保存海岸线mask图片。
+
+        Args:
+            heightmap: 高度图数据
+            path: 输出路径
+
+        生成的mask图片中:
+        - 白色(255) = 陆地 (高度 >= sea_level)
+        - 黑色(0) = 海洋 (高度 < sea_level)
+        """
+        start = time.time()
+
+        # 创建二值mask: 陆地为1, 海洋为0
+        mask = (heightmap >= self.config.sea_level).astype(np.uint8) * 255
+
+        # 保存为灰度图
+        plt.imsave(path, mask, cmap='gray', origin='lower', vmin=0, vmax=255)
+
+        duration = time.time() - start
+        print(f"海岸线mask已保存: {path} (耗时: {duration:.2f}s)")
+
 
 
 def _resolve_interpolation_order(method: str | None) -> int:
