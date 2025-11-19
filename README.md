@@ -59,6 +59,9 @@ python -m simple_map.cli --config map_config.json
 - `--light-direction` - 写实渲染光源方向，示例：`--light-direction -0.2 -0.5 0.7`
 - `--ambient-light` - 写实渲染环境光强度(0~1)
 - `--normal-strength` - 写实渲染法线强度，增大可强化明暗反差
+- `--enable-domain-warp` - 对基础噪声应用域扭曲（Domain Warping），营造更复杂的地形纹理
+- `--domain-warp-strength`/`--domain-warp-scale`/`--domain-warp-octaves`/`--domain-warp-persistence`/`--domain-warp-lacunarity` - 控制域扭曲偏移强度与噪声特征
+- `--preview-base-noise` - 仅渲染基础噪声(含域扭曲)，跳过侵蚀、输出放大与额外细节噪声，便于快速查看初始地形
 - `--output-scale` - 对渲染结果与高度图进行插值放大，例如 `--output-scale 2.0` 输出 2 倍尺寸
 - `--output-interpolation` - 放大时使用的插值方式，可选 `nearest`/`bilinear`/`bicubic`/`quadratic`/`quartic`/`quintic`
 - `--output-detail-noise-strength` - 放大后叠加轻微分型噪声的强度(0 表示关闭)，缓解像素块感
@@ -105,6 +108,23 @@ python -m simple_map.cli --config map_config.json \
 ```
 
 其中“侵蚀前”会导出尚未经过侵蚀模拟、但已经完成插值缩放的地图；“添加细节噪声前”导出已完成侵蚀与缩放但未叠加细节噪声的结果，方便与最终输出做对比。
+
+若只想快速预览基础噪声，可启用 `--preview-base-noise`，此时脚本会直接渲染噪声+扭曲+边缘衰减后的地形，并忽略侵蚀、输出放大以及额外细节噪声等后续步骤，生成速度更快：
+
+```bash
+python -m simple_map.cli --preview-base-noise --enable-domain-warp --domain-warp-strength 60
+```
+
+### 域扭曲(Noise Domain Warping)
+
+启用 `--enable-domain-warp` 后，会先生成两张低频噪声图作为偏移场，将基础 fBm 噪声的采样坐标在 XY 方向上扭曲。`domain-warp-strength` 控制偏移像素距离（值越大曲折越明显），`domain-warp-scale`/`domain-warp-octaves`/`domain-warp-persistence`/`domain-warp-lacunarity` 控制偏移场自身的频谱。典型示例：
+
+```bash
+python -m simple_map.cli --enable-domain-warp --domain-warp-strength 80 \
+    --domain-warp-scale 220 --domain-warp-octaves 4 --domain-warp-persistence 0.55
+```
+
+域扭曲能够在大陆内部形成更曲折的山脉/河谷，通常搭配较大的 `normal_strength` 与合适的细节噪声可以显著提升自然感。
 
 ### 侵蚀模拟参数
 

@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Dict
 import time
 
+import numpy as np
+
 from .generator import MapGenerator, MapGeneratorConfig
 
 
@@ -76,6 +78,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--ambient-light", type=float, default=None, help="写实渲染环境光强度(0-1)")
     parser.add_argument("--normal-strength", type=float, default=None, help="写实渲染法线强度")
+    parser.add_argument("--enable-domain-warp", action="store_true", help="对基础噪声应用域扭曲(domain warping)")
+    parser.add_argument("--domain-warp-strength", type=float, default=None, help="域扭曲偏移强度(像素)")
+    parser.add_argument("--domain-warp-scale", type=float, default=None, help="域扭曲噪声的基础尺度")
+    parser.add_argument("--domain-warp-octaves", type=int, default=None, help="域扭曲噪声的 octave 数")
+    parser.add_argument("--domain-warp-persistence", type=float, default=None, help="域扭曲噪声的持续性")
+    parser.add_argument("--domain-warp-lacunarity", type=float, default=None, help="域扭曲噪声的间隙性")
+    parser.add_argument("--preview-base-noise", action="store_true", help="仅渲染基础噪声/扭曲结果，跳过侵蚀与输出放大")
     parser.add_argument("--output-scale", type=float, default=None, help="输出插值放大倍数(默认 1.0 表示不变)")
     parser.add_argument(
         "--output-interpolation",
@@ -141,7 +150,7 @@ def pick(setting: str, args: argparse.Namespace, config: Dict[str, Any], default
     value = getattr(args, setting)
     # 对于 action="store_true" 的参数，只有显式提供时才使用命令行值
     # 否则应该从配置文件读取
-    if setting == "enable_erosion":
+    if setting in {"enable_erosion", "enable_domain_warp", "preview_base_noise"}:
         # 检查是否通过命令行显式设置了 --enable-erosion
         if value is True:  # 只有真正设置了才使用
             return value
@@ -194,6 +203,13 @@ def run() -> None:
         light_direction=_to_float_tuple(pick("light_direction", args, config_data, (-0.2, -0.5, 0.7)), 3),
         ambient_light=float(pick("ambient_light", args, config_data, 0.35)),
         normal_strength=float(pick("normal_strength", args, config_data, 6.0)),
+        enable_domain_warp=bool(pick("enable_domain_warp", args, config_data, False)),
+        domain_warp_strength=float(pick("domain_warp_strength", args, config_data, 60.0)),
+        domain_warp_scale=float(pick("domain_warp_scale", args, config_data, 250.0)),
+        domain_warp_octaves=int(pick("domain_warp_octaves", args, config_data, 3)),
+        domain_warp_persistence=float(pick("domain_warp_persistence", args, config_data, 0.5)),
+        domain_warp_lacunarity=float(pick("domain_warp_lacunarity", args, config_data, 2.0)),
+        preview_base_noise=bool(pick("preview_base_noise", args, config_data, False)),
         output_scale=float(pick("output_scale", args, config_data, 1.0)),
         output_interpolation=str(pick("output_interpolation", args, config_data, "bicubic")),
         output_detail_noise_strength=float(pick("output_detail_noise_strength", args, config_data, 0.0)),
@@ -211,8 +227,12 @@ def run() -> None:
 
     generator = MapGenerator(config)
     heightmap = generator.generate_heightmap()
-    pre_detail_heightmap = generator.prepare_heightmap_for_output(heightmap, apply_detail_noise=False)
-    output_heightmap = generator.apply_output_detail_noise_to_scaled(pre_detail_heightmap)
+    if config.preview_base_noise:
+        pre_detail_heightmap = heightmap
+        output_heightmap = heightmap
+    else:
+        pre_detail_heightmap = generator.prepare_heightmap_for_output(heightmap, apply_detail_noise=False)
+        output_heightmap = generator.apply_output_detail_noise_to_scaled(pre_detail_heightmap)
 
     output_path = Path(pick("out", args, config_data, "map.png"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -224,12 +244,13 @@ def run() -> None:
         heightmap_path.parent.mkdir(parents=True, exist_ok=True)
         generator.save_heightmap(output_heightmap, heightmap_path, apply_output_scale=False, log_label="最终高度图保存")
 
-    _maybe_save_stage_outputs(generator, pre_detail_heightmap, stage="pre_detail")
+    if not config.preview_base_noise:
+        _maybe_save_stage_outputs(generator, pre_detail_heightmap, stage="pre_detail")
 
-    pre_erosion = generator.pre_erosion_heightmap
-    if pre_erosion is not None:
-        pre_erosion_prepared = generator.prepare_heightmap_for_output(pre_erosion, apply_detail_noise=False)
-        _maybe_save_stage_outputs(generator, pre_erosion_prepared, stage="pre_erosion")
+        pre_erosion = generator.pre_erosion_heightmap
+        if pre_erosion is not None:
+            pre_erosion_prepared = generator.prepare_heightmap_for_output(pre_erosion, apply_detail_noise=False)
+            _maybe_save_stage_outputs(generator, pre_erosion_prepared, stage="pre_erosion")
 
     print(f"地图已保存：{output_path}")
     if heightmap_path:

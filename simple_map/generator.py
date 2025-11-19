@@ -60,6 +60,13 @@ class MapGeneratorConfig:
     output_detail_noise_lacunarity: float = 2.2
     output_detail_noise_min_level: float = 0.0
     output_detail_noise_full_level: float = 1.0
+    enable_domain_warp: bool = False
+    domain_warp_strength: float = 60.0
+    domain_warp_scale: float = 250.0
+    domain_warp_octaves: int = 3
+    domain_warp_persistence: float = 0.5
+    domain_warp_lacunarity: float = 2.0
+    preview_base_noise: bool = False
     pre_erosion_map: Optional[Path] = None
     pre_erosion_heightmap: Optional[Path] = None
     pre_detail_map: Optional[Path] = None
@@ -93,6 +100,7 @@ class MapGenerator:
             base_scale=cfg.base_scale,
             seed=self._rng.integers(0, 2**32 - 1),
         )
+        fbm = self._apply_domain_warp(fbm)
         mask = noise.continent_mask(cfg.width, cfg.height)
         heightmap = fbm * 0.65 + mask * 0.35
         heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
@@ -115,6 +123,10 @@ class MapGenerator:
             print(f"边缘衰减完成，耗时: {edge_time:.2f}s")
 
         self._pre_erosion_heightmap = heightmap.copy()
+        if cfg.preview_base_noise:
+            total_time = time.time() - total_start
+            print(f"\n=== 地形生成总耗时: {total_time:.2f}s ===\n")
+            return heightmap.astype(np.float32)
 
         # 应用侵蚀模拟(如果启用)
         if cfg.enable_erosion:
@@ -365,6 +377,55 @@ class MapGenerator:
             weights = (heightmap - min_level) / (full_level - min_level)
             weights = np.clip(weights, 0.0, 1.0)
         return weights.astype(np.float32, copy=False)
+
+    def _apply_domain_warp(self, values: np.ndarray) -> np.ndarray:
+        cfg = self.config
+        if not cfg.enable_domain_warp or cfg.domain_warp_strength <= 0:
+            return values
+        height, width = values.shape
+        octaves = max(1, int(cfg.domain_warp_octaves))
+        persistence = float(cfg.domain_warp_persistence)
+        lacunarity = float(cfg.domain_warp_lacunarity)
+        scale = max(float(cfg.domain_warp_scale), 1.0)
+        seed_x = int(self._rng.integers(0, 2**32 - 1))
+        seed_y = int(self._rng.integers(0, 2**32 - 1))
+        offset_x = noise.fractal_noise(
+            width,
+            height,
+            octaves=octaves,
+            persistence=persistence,
+            lacunarity=lacunarity,
+            base_scale=scale,
+            seed=seed_x,
+        ).astype(np.float32)
+        offset_y = noise.fractal_noise(
+            width,
+            height,
+            octaves=octaves,
+            persistence=persistence,
+            lacunarity=lacunarity,
+            base_scale=scale,
+            seed=seed_y,
+        ).astype(np.float32)
+        offset_x -= offset_x.mean()
+        offset_y -= offset_y.mean()
+        offset_x /= np.maximum(np.max(np.abs(offset_x)), 1e-6)
+        offset_y /= np.maximum(np.max(np.abs(offset_y)), 1e-6)
+        strength = float(cfg.domain_warp_strength)
+        grid_y, grid_x = np.meshgrid(
+            np.arange(height, dtype=np.float32),
+            np.arange(width, dtype=np.float32),
+            indexing="ij",
+        )
+        sample_y = grid_y + offset_y * strength
+        sample_x = grid_x + offset_x * strength
+        warped = ndimage.map_coordinates(
+            values,
+            [sample_y, sample_x],
+            order=1,
+            mode="reflect",
+        )
+        return warped.astype(np.float32, copy=False)
 
     @property
     def pre_erosion_heightmap(self) -> Optional[np.ndarray]:
