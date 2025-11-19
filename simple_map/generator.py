@@ -23,6 +23,9 @@ class MapGeneratorConfig:
     persistence: float = 0.5
     lacunarity: float = 2.0
     base_scale: float = 160.0
+    base_noise_contrast: float = 1.0  # 基础噪波对比度增强，>1 使山地与平原过渡更分明
+    plains_smoothing: float = 0.0  # 平原平滑强度，0-1之间，越大平原越平整
+    plains_threshold: float = 0.65  # 平原与山地的分界高度
     sea_level: float = 0.45
     snow_level: float = 0.9
     edge_falloff_margin: float = 0.08
@@ -104,6 +107,17 @@ class MapGenerator:
         mask = noise.continent_mask(cfg.width, cfg.height)
         heightmap = ridged * 0.65 + mask * 0.35
         heightmap = (heightmap - heightmap.min()) / (np.ptp(heightmap) + 1e-6)
+
+        # 应用对比度增强，使山地与平原过渡更分明
+        if cfg.base_noise_contrast > 0 and abs(cfg.base_noise_contrast - 1.0) > 1e-6:
+            heightmap = self._apply_contrast(heightmap, cfg.base_noise_contrast)
+
+        # 应用平原平滑处理
+        if cfg.plains_smoothing > 0:
+            heightmap = self._apply_plains_smoothing(
+                heightmap, cfg.plains_smoothing, cfg.plains_threshold, cfg.sea_level
+            )
+
         noise_time = time.time() - noise_start
         print(f"噪声生成完成，耗时: {noise_time:.2f}s")
 
@@ -377,6 +391,87 @@ class MapGenerator:
             weights = (heightmap - min_level) / (full_level - min_level)
             weights = np.clip(weights, 0.0, 1.0)
         return weights.astype(np.float32, copy=False)
+
+    def _apply_contrast(self, heightmap: np.ndarray, contrast: float) -> np.ndarray:
+        """应用对比度增强到高度图。
+
+        使用幂次函数来增强对比度：
+        - contrast > 1: 增强对比度，使山地更高、平原更低
+        - contrast < 1: 减弱对比度，使过渡更平滑
+        - contrast = 1: 不改变
+        """
+        if contrast <= 0:
+            return heightmap
+
+        # 使用幂次函数增强对比度
+        # 先确保值在 [0, 1] 范围内
+        normalized = np.clip(heightmap, 0.0, 1.0)
+        enhanced = np.power(normalized, contrast)
+        return enhanced.astype(np.float32)
+
+    def _apply_plains_smoothing(
+        self,
+        heightmap: np.ndarray,
+        smoothing_strength: float,
+        plains_threshold: float,
+        sea_level: float,
+    ) -> np.ndarray:
+        """选择性平滑平原区域，保持山地的凹凸细节。
+
+        Args:
+            heightmap: 输入高度图
+            smoothing_strength: 平滑强度 (0-1)
+            plains_threshold: 平原与山地的分界高度
+            sea_level: 海平面高度
+
+        Returns:
+            处理后的高度图
+        """
+        if smoothing_strength <= 0:
+            return heightmap
+
+        smoothing_strength = np.clip(smoothing_strength, 0.0, 1.0)
+
+        # 使用高斯滤波器平滑整个地图
+        from scipy.ndimage import gaussian_filter
+
+        sigma = 2.0 + smoothing_strength * 3.0  # 根据强度调整平滑程度
+        smoothed = gaussian_filter(heightmap, sigma=sigma, mode='reflect')
+
+        # 创建权重遮罩：平原区域权重高，山地区域权重低
+        # 平原定义为：高度在 sea_level 到 plains_threshold 之间的区域
+        plains_start = sea_level + 0.02  # 稍高于海岸线
+        plains_end = plains_threshold
+
+        # 计算每个点是"平原"的程度（0-1）
+        weights = np.zeros_like(heightmap)
+
+        # 平原核心区域
+        plains_mask = (heightmap >= plains_start) & (heightmap < plains_end)
+        weights[plains_mask] = 1.0
+
+        # 向海岸线过渡（平滑过渡避免突变）
+        coast_mask = (heightmap >= sea_level) & (heightmap < plains_start)
+        if np.any(coast_mask):
+            coast_blend = (heightmap[coast_mask] - sea_level) / (plains_start - sea_level + 1e-6)
+            weights[coast_mask] = coast_blend
+
+        # 向山地过渡（平滑过渡）
+        transition_width = 0.1  # 过渡带宽度
+        mountain_transition_end = plains_end + transition_width
+        mountain_mask = (heightmap >= plains_end) & (heightmap < mountain_transition_end)
+        if np.any(mountain_mask):
+            mountain_blend = 1.0 - (heightmap[mountain_mask] - plains_end) / (transition_width + 1e-6)
+            mountain_blend = np.clip(mountain_blend, 0.0, 1.0)
+            weights[mountain_mask] = mountain_blend
+
+        # 应用平滑强度
+        weights *= smoothing_strength
+
+        # 混合原始高度图和平滑版本
+        result = heightmap * (1.0 - weights) + smoothed * weights
+
+        return result.astype(np.float32)
 
     def _apply_domain_warp(self, values: np.ndarray) -> np.ndarray:
         cfg = self.config

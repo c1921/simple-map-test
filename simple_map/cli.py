@@ -27,6 +27,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--persistence", type=float, default=None)
     parser.add_argument("--lacunarity", type=float, default=None)
     parser.add_argument("--base-scale", type=float, default=None)
+    parser.add_argument("--base-noise-contrast", type=float, default=None, help="基础噪波对比度(>1 增强山地平原对比, <1 减弱)")
+    parser.add_argument("--plains-smoothing", type=float, default=None, help="平原平滑强度(0-1)，越大平原越平整")
+    parser.add_argument("--plains-threshold", type=float, default=None, help="平原与山地的分界高度(0-1)")
     parser.add_argument("--sea-level", type=float, default=None)
     parser.add_argument("--snow-level", type=float, default=None)
     parser.add_argument(
@@ -184,6 +187,9 @@ def run() -> None:
         persistence=float(pick("persistence", args, config_data, 0.5)),
         lacunarity=float(pick("lacunarity", args, config_data, 2.0)),
         base_scale=float(pick("base_scale", args, config_data, 160.0)),
+        base_noise_contrast=float(pick("base_noise_contrast", args, config_data, 1.0)),
+        plains_smoothing=float(pick("plains_smoothing", args, config_data, 0.0)),
+        plains_threshold=float(pick("plains_threshold", args, config_data, 0.65)),
         sea_level=float(pick("sea_level", args, config_data, 0.45)),
         snow_level=float(pick("snow_level", args, config_data, 0.9)),
         edge_falloff_margin=float(pick("edge_falloff_margin", args, config_data, 0.08)),
